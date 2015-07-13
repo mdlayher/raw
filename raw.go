@@ -29,13 +29,6 @@ func (a Addr) String() string {
 	return a.HardwareAddr.String()
 }
 
-// PacketConn is the implementation of the net.PacketConn interface for raw
-// network connections.
-type PacketConn struct {
-	// Operating system-specific implementation
-	*packetConn
-}
-
 // ListenPacket creates a net.PacketConn which can be used to send and receive
 // data at the network interface device driver level.
 //
@@ -44,9 +37,8 @@ type PacketConn struct {
 // or syscall.SOCK_DGRAM.  proto specifies the protocol which should be
 // captured and transmitted.  proto is automatically converted to network byte
 // order (big endian), akin to the htons() function in C.
-func ListenPacket(ifi *net.Interface, socket int, proto int) (*PacketConn, error) {
-	p, err := listenPacket(ifi, socket, proto)
-	return &PacketConn{p}, err
+func ListenPacket(ifi *net.Interface, socket int, proto int) (net.PacketConn, error) {
+	return listenPacket(ifi, socket, proto)
 }
 
 // htons converts a short (uint16) from host-to-network byte order.
