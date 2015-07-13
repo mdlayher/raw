@@ -5,8 +5,11 @@ package raw
 import (
 	"errors"
 	"net"
+	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 var (
@@ -19,6 +22,11 @@ var (
 type packetConn struct {
 	ifi  *net.Interface
 	sock int
+
+	// Timeouts set via Set{Read,Write,}Deadline, guarded by mutex
+	timeoutMu sync.RWMutex
+	rtimeout  time.Time
+	wtimeout  time.Time
 }
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
@@ -39,6 +47,10 @@ func listenPacket(ifi *net.Interface, socket int, proto int) (*packetConn, error
 		return nil, err
 	}
 
+	if err := syscall.SetNonblock(sock, true); err != nil {
+		return nil, err
+	}
+
 	// Bind the packet socket to the interface specified by ifi
 	// packet(7):
 	//   Only the sll_protocol and the sll_ifindex address fields are used for
@@ -56,10 +68,60 @@ func listenPacket(ifi *net.Interface, socket int, proto int) (*packetConn, error
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.
 func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	// Read a message from the socket into b
-	n, addr, err := syscall.Recvfrom(p.sock, b, 0)
-	if err != nil {
-		return n, nil, err
+	// Set up deadline context if needed, if a read timeout is set
+	ctx, cancel := context.TODO(), func() {}
+	p.timeoutMu.RLock()
+	if p.rtimeout.After(time.Now()) {
+		ctx, cancel = context.WithDeadline(context.Background(), p.rtimeout)
+	}
+	p.timeoutMu.RUnlock()
+
+	// Information returned by syscall.Recvfrom
+	var n int
+	var addr syscall.Sockaddr
+	var err error
+
+	for {
+		// Continue looping, or if deadline is set and has expired, return
+		// an error
+		select {
+		case <-ctx.Done():
+			// We only know how to handle deadline exceeded, so return any
+			// other errors for the caller to deal with
+			if err := ctx.Err(); err != context.DeadlineExceeded {
+				return n, nil, err
+			}
+
+			// Return standard net.OpError so caller can detect timeouts and retry
+			return n, nil, &net.OpError{
+				Op:   "read",
+				Net:  "raw",
+				Addr: nil,
+				Err:  &timeoutError{},
+			}
+		default:
+			// Not timed out, keep trying
+		}
+
+		// Attempt to receive on socket
+		n, addr, err = syscall.Recvfrom(p.sock, b, 0)
+		if err != nil {
+			n = 0
+
+			// EAGAIN is returned when no data is available for non-blocking
+			// I/O, so keep trying after a short delay
+			if err == syscall.EAGAIN {
+				time.Sleep(2 * time.Millisecond)
+				continue
+			}
+
+			// Return other errors
+			return n, nil, err
+		}
+
+		// Got data, cancel the deadline
+		cancel()
+		break
 	}
 
 	// Retrieve hardware address and other information from addr
@@ -87,6 +149,8 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 }
 
 // WriteTo implements the net.PacketConn.WriteTo method.
+//
+// TODO(mdlayher): implement write deadlines
 func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Ensure correct Addr type
 	a, ok := addr.(*Addr)
@@ -123,16 +187,27 @@ func (p *packetConn) LocalAddr() net.Addr {
 	}
 }
 
-// BUG(mdlayher): finish Linux deadline functionality
+// TODO(mdlayher): it is unfortunate that we have to implement deadlines using
+// a context, but it appears that there may not be a better solution until
+// Go 1.6 or later.  See here: https://github.com/golang/go/issues/10565.
 
 // SetDeadline implements the net.PacketConn.SetDeadline method.
 func (p *packetConn) SetDeadline(t time.Time) error {
-	return ErrNotImplemented
+	p.timeoutMu.Lock()
+	p.rtimeout = t
+	p.wtimeout = t
+	p.timeoutMu.Unlock()
+
+	return nil
 }
 
 // SetReadDeadline implements the net.PacketConn.SetReadDeadline method.
 func (p *packetConn) SetReadDeadline(t time.Time) error {
-	return ErrNotImplemented
+	p.timeoutMu.Lock()
+	p.rtimeout = t
+	p.timeoutMu.Unlock()
+
+	return nil
 }
 
 // SetWriteDeadline implements the net.PacketConn.SetWriteDeadline method.
