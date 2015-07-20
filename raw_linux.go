@@ -20,13 +20,23 @@ var (
 // packetConn is the Linux-specific implementation of net.PacketConn for this
 // package.
 type packetConn struct {
-	ifi  *net.Interface
-	sock int
+	ifi *net.Interface
+	s   socket
 
 	// Timeouts set via Set{Read,Write,}Deadline, guarded by mutex
 	timeoutMu sync.RWMutex
 	rtimeout  time.Time
 	wtimeout  time.Time
+}
+
+// socket is an interface which enables swapping out socket syscalls for
+// testing.
+type socket interface {
+	Bind(syscall.Sockaddr) error
+	Close() error
+	Recvfrom([]byte, int) (int, syscall.Sockaddr, error)
+	Sendto([]byte, int, syscall.Sockaddr) error
+	SetNonblock(bool) error
 }
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
@@ -47,7 +57,19 @@ func listenPacket(ifi *net.Interface, socket int, proto int) (*packetConn, error
 		return nil, err
 	}
 
-	if err := syscall.SetNonblock(sock, true); err != nil {
+	// Wrap raw socket in socket interface and create packetConn
+	return newPacketConn(ifi, &sysSocket{
+		fd: sock,
+	}, pbe)
+}
+
+// newPacketConn creates a net.PacketConn using the specified network
+// interface, wrapped socket, and big endian protocol number.
+//
+// It is the entry point for tests in this package.
+func newPacketConn(ifi *net.Interface, s socket, pbe uint16) (*packetConn, error) {
+	// Set nonblocking I/O so we can time out reads and writes
+	if err := s.SetNonblock(true); err != nil {
 		return nil, err
 	}
 
@@ -55,14 +77,14 @@ func listenPacket(ifi *net.Interface, socket int, proto int) (*packetConn, error
 	// packet(7):
 	//   Only the sll_protocol and the sll_ifindex address fields are used for
 	//   purposes of binding.
-	err = syscall.Bind(sock, &syscall.SockaddrLinklayer{
+	err := s.Bind(&syscall.SockaddrLinklayer{
 		Protocol: pbe,
 		Ifindex:  ifi.Index,
 	})
 
 	return &packetConn{
-		ifi:  ifi,
-		sock: sock,
+		ifi: ifi,
+		s:   s,
 	}, err
 }
 
@@ -104,7 +126,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 
 		// Attempt to receive on socket
-		n, addr, err = syscall.Recvfrom(p.sock, b, 0)
+		n, addr, err = p.s.Recvfrom(b, 0)
 		if err != nil {
 			n = 0
 
@@ -167,7 +189,7 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	//   When you send packets it is enough to specify sll_family, sll_addr,
 	//   sll_halen, sll_ifindex.  The other fields should  be 0.
 	// In this case, sll_family is taken care of automatically by syscall
-	err := syscall.Sendto(p.sock, b, 0, &syscall.SockaddrLinklayer{
+	err := p.s.Sendto(b, 0, &syscall.SockaddrLinklayer{
 		Ifindex: p.ifi.Index,
 		Halen:   uint8(len(a.HardwareAddr)),
 		Addr:    baddr,
@@ -177,7 +199,7 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 // Close closes the connection.
 func (p *packetConn) Close() error {
-	return syscall.Close(p.sock)
+	return p.s.Close()
 }
 
 // LocalAddr returns the local network address.
@@ -214,3 +236,21 @@ func (p *packetConn) SetReadDeadline(t time.Time) error {
 func (p *packetConn) SetWriteDeadline(t time.Time) error {
 	return ErrNotImplemented
 }
+
+// sysSocket is the default socket implementation.  It makes use of
+// Linux-specific system calls to handle raw socket functionality.
+type sysSocket struct {
+	fd int
+}
+
+// Method implementations simply invoke the syscall of the same name, but pass
+// the file descriptor stored in the sysSocket as the socket to use.
+func (s *sysSocket) Bind(sa syscall.Sockaddr) error { return syscall.Bind(s.fd, sa) }
+func (s *sysSocket) Close() error                   { return syscall.Close(s.fd) }
+func (s *sysSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
+	return syscall.Recvfrom(s.fd, p, flags)
+}
+func (s *sysSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
+	return syscall.Sendto(s.fd, p, flags, to)
+}
+func (s *sysSocket) SetNonblock(nonblocking bool) error { return syscall.SetNonblock(s.fd, nonblocking) }
