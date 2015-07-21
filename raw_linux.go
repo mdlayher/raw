@@ -3,7 +3,6 @@
 package raw
 
 import (
-	"errors"
 	"net"
 	"sync"
 	"syscall"
@@ -164,12 +163,8 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 
 	// Retrieve hardware address and other information from addr
 	sa, ok := addr.(*syscall.SockaddrLinklayer)
-	if !ok {
-		return n, nil, errors.New("invalid sockaddr_ll")
-	}
-
-	if sa.Halen < 6 {
-		return n, nil, errors.New("invalid hardware address")
+	if !ok || sa.Halen < 6 {
+		return n, nil, syscall.EINVAL
 	}
 
 	// Use length specified to convert byte array into a hardware address slice
