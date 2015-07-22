@@ -273,13 +273,15 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 // Test for a correct ReadFrom with data and address.
 
 type recvfromSocket struct {
-	p    []byte
-	addr syscall.Sockaddr
+	p     []byte
+	flags int
+	addr  syscall.Sockaddr
 	noopSocket
 }
 
 func (s *recvfromSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
 	copy(p, s.p)
+	s.flags = flags
 	return len(s.p), s.addr, nil
 }
 
@@ -288,15 +290,17 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 	data := []byte{0, 1, 2, 3}
 	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
 
+	s := &recvfromSocket{
+		p: data,
+		addr: &syscall.SockaddrLinklayer{
+			Halen: 6,
+			Addr:  [8]byte{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0x00, 0x00},
+		},
+	}
+
 	p, err := newPacketConn(
 		&net.Interface{},
-		&recvfromSocket{
-			p: data,
-			addr: &syscall.SockaddrLinklayer{
-				Halen: 6,
-				Addr:  [8]byte{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0x00, 0x00},
-			},
-		},
+		s,
 		0,
 		&testSleeper{},
 	)
@@ -308,6 +312,10 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 	n, addr, err := p.ReadFrom(buf)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if want, got := 0, s.flags; want != got {
+		t.Fatalf("unexpected flags:\n- want: %v\n-  got: %v", want, got)
 	}
 
 	raddr, ok := addr.(*Addr)
@@ -384,13 +392,15 @@ func Test_packetConnReadFromSendtoError(t *testing.T) {
 // Test for a correct WriteTo with data and address.
 
 type sendtoSocket struct {
-	p    []byte
-	addr syscall.Sockaddr
+	p     []byte
+	flags int
+	addr  syscall.Sockaddr
 	noopSocket
 }
 
 func (s *sendtoSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
 	copy(s.p, p)
+	s.flags = flags
 	s.addr = to
 	return nil
 }
@@ -420,6 +430,10 @@ func Test_packetConnWriteToSendtoOK(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if want, got := 0, s.flags; want != got {
+		t.Fatalf("unexpected flags:\n- want: %v\n-  got: %v", want, got)
 	}
 
 	if want, got := wantN, n; want != got {
