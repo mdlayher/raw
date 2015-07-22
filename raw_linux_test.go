@@ -327,6 +327,118 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 	}
 }
 
+// Test for incorrect sockaddr type for WriteTo.
+
+func Test_packetConnWriteToInvalidSockaddr(t *testing.T) {
+	_, err := (&packetConn{}).WriteTo(nil, &net.IPAddr{})
+	if want, got := syscall.EINVAL, err; want != got {
+		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
+// Test for malformed hardware address with WriteTo.
+
+func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
+	_, err := (&packetConn{}).WriteTo(nil, &Addr{
+		HardwareAddr: net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde},
+	})
+	if want, got := syscall.EINVAL, err; want != got {
+		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
+// Test for errors which occur immediately when calling sendto on a socket.
+
+type errSendtoSocket struct {
+	err error
+	noopSocket
+}
+
+func (s *errSendtoSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
+	return s.err
+}
+
+func Test_packetConnReadFromSendtoError(t *testing.T) {
+	fooErr := errors.New("foo")
+
+	p, err := newPacketConn(
+		&net.Interface{},
+		&errSendtoSocket{
+			err: fooErr,
+		},
+		0,
+		&testSleeper{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = p.WriteTo(nil, &Addr{
+		HardwareAddr: net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad},
+	})
+	if want, got := fooErr, err; want != got {
+		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
+// Test for a correct WriteTo with data and address.
+
+type sendtoSocket struct {
+	p    []byte
+	addr syscall.Sockaddr
+	noopSocket
+}
+
+func (s *sendtoSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
+	copy(s.p, p)
+	s.addr = to
+	return nil
+}
+
+func Test_packetConnWriteToSendtoOK(t *testing.T) {
+	const wantN = 4
+	data := []byte{0, 1, 2, 3}
+
+	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
+
+	s := &sendtoSocket{
+		p: make([]byte, wantN),
+	}
+
+	p, err := newPacketConn(
+		&net.Interface{},
+		s,
+		0,
+		&testSleeper{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := p.WriteTo(data, &Addr{
+		HardwareAddr: deadbeefHW,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want, got := wantN, n; want != got {
+		t.Fatalf("unexpected data length:\n- want: %v\n-  got: %v", want, got)
+	}
+	if want, got := data, s.p; !bytes.Equal(want, got) {
+		t.Fatalf("unexpected data:\n- want: %v\n-  got: %v", want, got)
+	}
+
+	sall, ok := s.addr.(*syscall.SockaddrLinklayer)
+	if !ok {
+		t.Fatalf("write sockaddr has incorrect type: %T", s.addr)
+	}
+
+	if want, got := deadbeefHW, sall.Addr[:][:sall.Halen]; !bytes.Equal(want, got) {
+		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
 // testSleeper is a sleeper implementation which atomically increments a
 // counter to indicate how long it has slept.
 type testSleeper struct {
