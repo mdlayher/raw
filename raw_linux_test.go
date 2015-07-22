@@ -480,6 +480,23 @@ func Test_packetConnClose(t *testing.T) {
 	}
 }
 
+// Test that LocalAddr returns the hardware address of the network interface
+// which is being used by the socket.
+
+func Test_packetConnLocalAddr(t *testing.T) {
+	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
+
+	p := &packetConn{
+		ifi: &net.Interface{
+			HardwareAddr: deadbeefHW,
+		},
+	}
+
+	if want, got := deadbeefHW, p.LocalAddr().(*Addr).HardwareAddr; !bytes.Equal(want, got) {
+		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
 // testSleeper is a sleeper implementation which atomically increments a
 // counter to indicate how long it has slept.
 type testSleeper struct {
