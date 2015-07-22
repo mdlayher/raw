@@ -187,7 +187,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Ensure correct Addr type
 	a, ok := addr.(*Addr)
-	if !ok {
+	if !ok || len(a.HardwareAddr) < 6 {
 		return 0, syscall.EINVAL
 	}
 
