@@ -12,62 +12,6 @@ import (
 	"time"
 )
 
-// Test for errors which occur when attempting to set socket to
-// nonblocking mode.
-
-type errSetNonblockSocket struct {
-	err error
-	noopSocket
-}
-
-func (s *errSetNonblockSocket) SetNonblock(nonblocking bool) error { return s.err }
-
-func Test_newPacketConnSetNonblockError(t *testing.T) {
-	fooErr := errors.New("foo")
-
-	_, err := newPacketConn(
-		&net.Interface{},
-		&errSetNonblockSocket{
-			err: fooErr,
-		},
-		0,
-		&testSleeper{},
-	)
-	if want, got := fooErr, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test to ensure that nonblocking mode is always true for sockets.
-
-type setNonblockSocket struct {
-	nonblocking bool
-	noopSocket
-}
-
-func (s *setNonblockSocket) SetNonblock(nonblocking bool) error {
-	s.nonblocking = nonblocking
-	return nil
-}
-
-func Test_newPacketConnSetNonblock(t *testing.T) {
-	s := &setNonblockSocket{}
-
-	_, err := newPacketConn(
-		&net.Interface{},
-		s,
-		0,
-		&testSleeper{},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if want, got := true, s.nonblocking; want != got {
-		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
 // Test for errors which occur while attempting to bind socket.
 
 type errBindSocket struct {
@@ -494,6 +438,105 @@ func Test_packetConnLocalAddr(t *testing.T) {
 
 	if want, got := deadbeefHW, p.LocalAddr().(*Addr).HardwareAddr; !bytes.Equal(want, got) {
 		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
+// Test to ensure that nonblocking mode appropriately toggles depending on
+// input, and that it remains toggled correctly for various inputs.
+
+type setNonblockSocket struct {
+	nonblocking bool
+	triggered   bool
+	noopSocket
+}
+
+func (s *setNonblockSocket) SetNonblock(nonblocking bool) error {
+	s.nonblocking = nonblocking
+	s.triggered = true
+	return nil
+}
+
+func Test_packetConnSetNonblock(t *testing.T) {
+	s := &setNonblockSocket{}
+
+	p, err := newPacketConn(
+		&net.Interface{},
+		s,
+		0,
+		&testSleeper{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 1: socket should remain blocking due to zero time, SetNonblock
+	// should never have been triggered
+	if err := p.SetDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if want, got := false, s.triggered; want != got {
+		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+	if want, got := false, s.nonblocking; want != got {
+		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+
+	// Reset trigger
+	s.triggered = false
+
+	// Test 2: socket should become nonblocking due to time after now
+	if err := p.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if want, got := true, s.triggered; want != got {
+		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+	if want, got := true, s.nonblocking; want != got {
+		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+
+	// Reset trigger
+	s.triggered = false
+
+	// Test 3: socket should remain nonblocking due to time after now, but not
+	// trigger the system call again
+	if err := p.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if want, got := false, s.triggered; want != got {
+		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+	if want, got := true, s.nonblocking; want != got {
+		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+
+	// Reset trigger
+	s.triggered = false
+
+	// Test 4: socket should become blocking due to zero time
+	if err := p.SetDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if want, got := true, s.triggered; want != got {
+		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+	if want, got := false, s.nonblocking; want != got {
+		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+
+	// Reset trigger
+	s.triggered = false
+
+	// Test 5: socket should remain blocking due to zero time, but not trigger
+	// the system call again
+	if err := p.SetDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if want, got := false, s.triggered; want != got {
+		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+	if want, got := false, s.nonblocking; want != got {
+		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
 	}
 }
 

@@ -25,10 +25,10 @@ type packetConn struct {
 	// Sleep function implementation
 	sleeper sleeper
 
-	// Timeouts set via Set{Read,Write,}Deadline, guarded by mutex
-	timeoutMu sync.RWMutex
-	rtimeout  time.Time
-	wtimeout  time.Time
+	// Timeouts set via Set{Read,}Deadline, guarded by mutex
+	timeoutMu   sync.RWMutex
+	nonblocking bool
+	rtimeout    time.Time
 }
 
 // socket is an interface which enables swapping out socket syscalls for
@@ -81,11 +81,6 @@ func listenPacket(ifi *net.Interface, proto int) (*packetConn, error) {
 //
 // It is the entry point for tests in this package.
 func newPacketConn(ifi *net.Interface, s socket, pbe uint16, sleeper sleeper) (*packetConn, error) {
-	// Set nonblocking I/O so we can time out reads and writes
-	if err := s.SetNonblock(true); err != nil {
-		return nil, err
-	}
-
 	// Bind the packet socket to the interface specified by ifi
 	// packet(7):
 	//   Only the sll_protocol and the sll_ifindex address fields are used for
@@ -181,8 +176,6 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 }
 
 // WriteTo implements the net.PacketConn.WriteTo method.
-//
-// TODO(mdlayher): implement write deadlines
 func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Ensure correct Addr type
 	a, ok := addr.(*Addr)
@@ -225,26 +218,41 @@ func (p *packetConn) LocalAddr() net.Addr {
 
 // SetDeadline implements the net.PacketConn.SetDeadline method.
 func (p *packetConn) SetDeadline(t time.Time) error {
-	p.timeoutMu.Lock()
-	p.rtimeout = t
-	p.wtimeout = t
-	p.timeoutMu.Unlock()
-
-	return nil
+	return p.SetReadDeadline(t)
 }
 
 // SetReadDeadline implements the net.PacketConn.SetReadDeadline method.
 func (p *packetConn) SetReadDeadline(t time.Time) error {
 	p.timeoutMu.Lock()
+
+	// Set nonblocking I/O so we can time out reads and writes
+	//
+	// This is set only if timeouts are used, because a server probably
+	// does not want timeouts by default, and a client can request them
+	// itself if needed.
+	var err error
+
+	// If already nonblocking and the zero-value for t is entered, disable
+	// nonblocking mode
+	if p.nonblocking && t.IsZero() {
+		err = p.s.SetNonblock(false)
+		p.nonblocking = false
+	} else if !p.nonblocking && t.After(time.Now()) {
+		// If not nonblocking and t is after current time, enable nonblocking
+		// mode
+		err = p.s.SetNonblock(true)
+		p.nonblocking = true
+	}
+
 	p.rtimeout = t
 	p.timeoutMu.Unlock()
 
-	return nil
+	return err
 }
 
 // SetWriteDeadline implements the net.PacketConn.SetWriteDeadline method.
 func (p *packetConn) SetWriteDeadline(t time.Time) error {
-	return ErrNotImplemented
+	return nil
 }
 
 // sysSocket is the default socket implementation.  It makes use of
