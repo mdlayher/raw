@@ -29,6 +29,10 @@ func (a Addr) String() string {
 	return a.HardwareAddr.String()
 }
 
+// A Protocol is a network protocol constant which identifies the type of
+// traffic a raw socket should send and receive.
+type Protocol uint16
+
 // ListenPacket creates a net.PacketConn which can be used to send and receive
 // data at the network interface device driver level.
 //
@@ -36,7 +40,7 @@ func (a Addr) String() string {
 // data.  proto specifies the protocol which should be captured and
 // transmitted.  proto is automatically converted to network byte
 // order (big endian), akin to the htons() function in C.
-func ListenPacket(ifi *net.Interface, proto int) (net.PacketConn, error) {
+func ListenPacket(ifi *net.Interface, proto Protocol) (net.PacketConn, error) {
 	return listenPacket(ifi, proto)
 }
 

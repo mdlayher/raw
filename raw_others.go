@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	// ProtocolARP specifies the Address Resolution Protocol (RFC 826).
+	ProtocolARP Protocol = 0
+)
+
 var (
 	// Must implement net.PacketConn at compile-time.
 	_ net.PacketConn = &packetConn{}
@@ -16,7 +21,7 @@ var (
 type packetConn struct{}
 
 // listenPacket is not currently implemented on this platform.
-func listenPacket(ifi *net.Interface, proto int) (*packetConn, error) {
+func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
 	return nil, ErrNotImplemented
 }
 
