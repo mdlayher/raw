@@ -12,6 +12,9 @@ import (
 )
 
 const (
+	// ProtocolAoE specifies the ATA over Ethernet protocol (AoEr11).
+	ProtocolAoE Protocol = syscall.ETH_P_AOE
+
 	// ProtocolARP specifies the Address Resolution Protocol (RFC 826).
 	ProtocolARP Protocol = syscall.ETH_P_ARP
 )
