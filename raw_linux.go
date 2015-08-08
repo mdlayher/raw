@@ -17,6 +17,9 @@ const (
 
 	// ProtocolARP specifies the Address Resolution Protocol (RFC 826).
 	ProtocolARP Protocol = syscall.ETH_P_ARP
+
+	// ProtocolWoL specifies the Wake-on-LAN protocol.
+	ProtocolWoL Protocol = 0x0842
 )
 
 var (

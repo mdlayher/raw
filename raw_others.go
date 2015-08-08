@@ -13,6 +13,9 @@ const (
 
 	// ProtocolARP specifies the Address Resolution Protocol (RFC 826).
 	ProtocolARP Protocol = 0
+
+	// ProtocolWoL specifies the Wake-on-LAN protocol.
+	ProtocolWoL Protocol = 0
 )
 
 var (
