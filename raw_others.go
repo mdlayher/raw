@@ -5,6 +5,8 @@ package raw
 import (
 	"net"
 	"time"
+
+	"golang.org/x/net/bpf"
 )
 
 const (
@@ -63,5 +65,10 @@ func (p *packetConn) SetReadDeadline(t time.Time) error {
 
 // SetWriteDeadline is not currently implemented on this platform.
 func (p *packetConn) SetWriteDeadline(t time.Time) error {
+	return ErrNotImplemented
+}
+
+// attachBPF is not currently implemented on this platform.
+func attachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
 	return ErrNotImplemented
 }

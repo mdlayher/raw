@@ -5,6 +5,8 @@ package raw
 import (
 	"errors"
 	"net"
+
+	"golang.org/x/net/bpf"
 )
 
 var (
@@ -42,6 +44,11 @@ type Protocol uint16
 // order (big endian), akin to the htons() function in C.
 func ListenPacket(ifi *net.Interface, proto Protocol) (net.PacketConn, error) {
 	return listenPacket(ifi, proto)
+}
+
+// AttachBPF attaches an assembled BPF program to a raw net.PacketConn.
+func AttachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
+	return attachBPF(p, filter)
 }
 
 // htons converts a short (uint16) from host-to-network byte order.

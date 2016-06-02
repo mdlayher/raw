@@ -4,10 +4,13 @@ package raw
 
 import (
 	"net"
+	"os"
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
+	"golang.org/x/net/bpf"
 	"golang.org/x/net/context"
 )
 
@@ -47,9 +50,11 @@ type packetConn struct {
 type socket interface {
 	Bind(syscall.Sockaddr) error
 	Close() error
+	FD() int
 	Recvfrom([]byte, int) (int, syscall.Sockaddr, error)
 	Sendto([]byte, int, syscall.Sockaddr) error
 	SetNonblock(bool) error
+	SetSockopt(level, name int, v unsafe.Pointer, l uint32) error
 }
 
 // sleeper is an interface which enables swapping out an actual time.Sleep
@@ -266,6 +271,48 @@ func (p *packetConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+// attachBPF attaches an assembled BPF program to a raw net.PacketConn.
+func attachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
+	pc, ok := p.(*packetConn)
+	if !ok {
+		return ErrNotImplemented
+	}
+
+	prog := syscall.SockFprog{
+		Len:    uint16(len(filter)),
+		Filter: (*syscall.SockFilter)(unsafe.Pointer(&filter[0])),
+	}
+
+	return os.NewSyscallError(
+		"setsockopt",
+		setsockopt(
+			pc.s.FD(),
+			syscall.SOL_SOCKET,
+			syscall.SO_ATTACH_FILTER,
+			unsafe.Pointer(&prog),
+			uint32(unsafe.Sizeof(prog)),
+		),
+	)
+}
+
+// setsockopt provides access to the setsockopt syscall.
+func setsockopt(fd, level, name int, v unsafe.Pointer, l uint32) error {
+	_, _, errno := syscall.Syscall6(
+		syscall.SYS_SETSOCKOPT,
+		uintptr(fd),
+		uintptr(level),
+		uintptr(name),
+		uintptr(v),
+		uintptr(l),
+		0,
+	)
+	if errno != 0 {
+		return error(errno)
+	}
+
+	return nil
+}
+
 // sysSocket is the default socket implementation.  It makes use of
 // Linux-specific system calls to handle raw socket functionality.
 type sysSocket struct {
@@ -276,6 +323,7 @@ type sysSocket struct {
 // the file descriptor stored in the sysSocket as the socket to use.
 func (s *sysSocket) Bind(sa syscall.Sockaddr) error { return syscall.Bind(s.fd, sa) }
 func (s *sysSocket) Close() error                   { return syscall.Close(s.fd) }
+func (s *sysSocket) FD() int                        { return s.fd }
 func (s *sysSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
 	return syscall.Recvfrom(s.fd, p, flags)
 }
@@ -283,6 +331,9 @@ func (s *sysSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
 	return syscall.Sendto(s.fd, p, flags, to)
 }
 func (s *sysSocket) SetNonblock(nonblocking bool) error { return syscall.SetNonblock(s.fd, nonblocking) }
+func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
+	return setsockopt(s.fd, level, name, v, l)
+}
 
 // timeSleeper sleeps using time.Sleep.
 type timeSleeper struct{}
