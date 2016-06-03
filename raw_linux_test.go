@@ -13,31 +13,6 @@ import (
 	"unsafe"
 )
 
-// Test for errors which occur while attempting to bind socket.
-
-type errBindSocket struct {
-	err error
-	noopSocket
-}
-
-func (s *errBindSocket) Bind(sa syscall.Sockaddr) error { return s.err }
-
-func Test_newPacketConnBindError(t *testing.T) {
-	fooErr := errors.New("foo")
-
-	_, err := newPacketConn(
-		&net.Interface{},
-		&errBindSocket{
-			err: fooErr,
-		},
-		0,
-		&testSleeper{},
-	)
-	if want, got := fooErr, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
 // Test to ensure that socket is bound with correct sockaddr_ll information
 
 type bindSocket struct {
@@ -78,38 +53,6 @@ func Test_newPacketConnBind(t *testing.T) {
 	}
 	if want, got := protocol, sall.Protocol; want != got {
 		t.Fatalf("unexpected protocol:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for errors which occur immediately when calling recvfrom on a socket.
-
-type errRecvfromSocket struct {
-	err error
-	noopSocket
-}
-
-func (s *errRecvfromSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
-	return 0, nil, s.err
-}
-
-func Test_packetConnReadFromRecvfromError(t *testing.T) {
-	fooErr := errors.New("foo")
-
-	p, err := newPacketConn(
-		&net.Interface{},
-		&errRecvfromSocket{
-			err: fooErr,
-		},
-		0,
-		&testSleeper{},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = p.ReadFrom(nil)
-	if want, got := fooErr, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 	}
 }
 
@@ -296,40 +239,6 @@ func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
 		HardwareAddr: net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde},
 	})
 	if want, got := syscall.EINVAL, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for errors which occur immediately when calling sendto on a socket.
-
-type errSendtoSocket struct {
-	err error
-	noopSocket
-}
-
-func (s *errSendtoSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
-	return s.err
-}
-
-func Test_packetConnReadFromSendtoError(t *testing.T) {
-	fooErr := errors.New("foo")
-
-	p, err := newPacketConn(
-		&net.Interface{},
-		&errSendtoSocket{
-			err: fooErr,
-		},
-		0,
-		&testSleeper{},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = p.WriteTo(nil, &Addr{
-		HardwareAddr: net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad},
-	})
-	if want, got := fooErr, err; want != got {
 		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 	}
 }
