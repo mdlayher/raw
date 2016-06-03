@@ -5,6 +5,7 @@ package raw
 import (
 	"errors"
 	"net"
+	"time"
 
 	"golang.org/x/net/bpf"
 )
@@ -15,6 +16,8 @@ var (
 	ErrNotImplemented = errors.New("not implemented")
 )
 
+var _ net.Addr = &Addr{}
+
 // Addr is a network address which can be used to contact other machines, using
 // their hardware addresses.
 type Addr struct {
@@ -22,13 +25,63 @@ type Addr struct {
 }
 
 // Network returns the address's network name, "raw".
-func (a Addr) Network() string {
+func (a *Addr) Network() string {
 	return "raw"
 }
 
 // String returns the address's hardware address.
-func (a Addr) String() string {
+func (a *Addr) String() string {
 	return a.HardwareAddr.String()
+}
+
+var _ net.PacketConn = &Conn{}
+
+// Conn is an implementation of the net.PacketConn interface which can send
+// and receive data at the network interface device driver level.
+type Conn struct {
+	// packetConn is the operating system-specific implementation of
+	// a raw connection.
+	p *packetConn
+}
+
+// ReadFrom implements the net.PacketConn ReadFrom method.
+func (c *Conn) ReadFrom(b []byte) (int, net.Addr, error) {
+	return c.p.ReadFrom(b)
+}
+
+// WriteTo implements the net.PacketConn WriteTo method.
+func (c *Conn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	return c.p.WriteTo(b, addr)
+}
+
+// Close closes the connection.
+func (c *Conn) Close() error {
+	return c.p.Close()
+}
+
+// LocalAddr returns the local network address.
+func (c *Conn) LocalAddr() net.Addr {
+	return c.p.LocalAddr()
+}
+
+// SetDeadline implements the net.PacketConn SetDeadline method.
+func (c *Conn) SetDeadline(t time.Time) error {
+	return c.p.SetDeadline(t)
+}
+
+// SetReadDeadline implements the net.PacketConn SetReadDeadline method.
+func (c *Conn) SetReadDeadline(t time.Time) error {
+	return c.p.SetReadDeadline(t)
+}
+
+// SetWriteDeadline implements the net.PacketConn SetWriteDeadline method.
+func (c *Conn) SetWriteDeadline(t time.Time) error {
+	return c.p.SetWriteDeadline(t)
+}
+
+// SetBPF attaches an assembled BPF program to the connection.
+func (c *Conn) SetBPF(filter []bpf.RawInstruction) error {
+	return c.p.SetBPF(filter)
 }
 
 // A Protocol is a network protocol constant which identifies the type of
@@ -42,13 +95,15 @@ type Protocol uint16
 // data.  proto specifies the protocol which should be captured and
 // transmitted.  proto is automatically converted to network byte
 // order (big endian), akin to the htons() function in C.
-func ListenPacket(ifi *net.Interface, proto Protocol) (net.PacketConn, error) {
-	return listenPacket(ifi, proto)
-}
+func ListenPacket(ifi *net.Interface, proto Protocol) (*Conn, error) {
+	p, err := listenPacket(ifi, proto)
+	if err != nil {
+		return nil, err
+	}
 
-// AttachBPF attaches an assembled BPF program to a raw net.PacketConn.
-func AttachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
-	return attachBPF(p, filter)
+	return &Conn{
+		p: p,
+	}, nil
 }
 
 // htons converts a short (uint16) from host-to-network byte order.

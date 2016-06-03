@@ -271,13 +271,8 @@ func (p *packetConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-// attachBPF attaches an assembled BPF program to a raw net.PacketConn.
-func attachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
-	pc, ok := p.(*packetConn)
-	if !ok {
-		return ErrNotImplemented
-	}
-
+// SetBPF attaches an assembled BPF program to a raw net.PacketConn.
+func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	prog := syscall.SockFprog{
 		Len:    uint16(len(filter)),
 		Filter: (*syscall.SockFilter)(unsafe.Pointer(&filter[0])),
@@ -286,7 +281,7 @@ func attachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
 	return os.NewSyscallError(
 		"setsockopt",
 		setsockopt(
-			pc.s.FD(),
+			p.s.FD(),
 			syscall.SOL_SOCKET,
 			syscall.SO_ATTACH_FILTER,
 			unsafe.Pointer(&prog),

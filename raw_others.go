@@ -68,7 +68,7 @@ func (p *packetConn) SetWriteDeadline(t time.Time) error {
 	return ErrNotImplemented
 }
 
-// attachBPF is not currently implemented on this platform.
-func attachBPF(p net.PacketConn, filter []bpf.RawInstruction) error {
+// SetBPF is not currently implemented on this platform.
+func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return ErrNotImplemented
 }
