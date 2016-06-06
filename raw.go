@@ -10,10 +10,21 @@ import (
 	"golang.org/x/net/bpf"
 )
 
+const (
+	// ProtocolAoE specifies the ATA over Ethernet protocol (AoEr11).
+	ProtocolAoE Protocol = 0x88a2
+
+	// ProtocolARP specifies the Address Resolution Protocol (RFC 826).
+	ProtocolARP Protocol = 0x0806
+
+	// ProtocolWoL specifies the Wake-on-LAN protocol.
+	ProtocolWoL Protocol = 0x0842
+)
+
 var (
 	// ErrNotImplemented is returned when certain functionality is not yet
 	// implemented for the host operating system.
-	ErrNotImplemented = errors.New("not implemented")
+	ErrNotImplemented = errors.New("raw: not implemented")
 )
 
 var _ net.Addr = &Addr{}
@@ -93,7 +104,7 @@ type Protocol uint16
 //
 // ifi specifies the network interface which will be used to send and receive
 // data.  proto specifies the protocol which should be captured and
-// transmitted.  proto is automatically converted to network byte
+// transmitted.  proto, if needed, is automatically converted to network byte
 // order (big endian), akin to the htons() function in C.
 func ListenPacket(ifi *net.Interface, proto Protocol) (*Conn, error) {
 	p, err := listenPacket(ifi, proto)

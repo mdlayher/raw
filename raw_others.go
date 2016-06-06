@@ -1,4 +1,4 @@
-// +build !linux
+// +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd
 
 package raw
 
@@ -7,17 +7,6 @@ import (
 	"time"
 
 	"golang.org/x/net/bpf"
-)
-
-const (
-	// ProtocolAoE specifies the ATA over Ethernet protocol (AoEr11).
-	ProtocolAoE Protocol = 0
-
-	// ProtocolARP specifies the Address Resolution Protocol (RFC 826).
-	ProtocolARP Protocol = 0
-
-	// ProtocolWoL specifies the Wake-on-LAN protocol.
-	ProtocolWoL Protocol = 0
 )
 
 var (
