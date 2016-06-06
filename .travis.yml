@@ -1,10 +1,13 @@
 language: go
 go:
-  - 1.5
+  - 1.6.2
   - tip
 os:
   - linux
   - osx
+matrix:
+  allow_failures:
+    - go: tip
 before_install:
   - go get github.com/axw/gocov/gocov
   - go get github.com/mattn/goveralls
