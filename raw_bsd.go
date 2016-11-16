@@ -76,8 +76,10 @@ func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
 		}
 
 		// Device is busy, try the next one
-		if err == syscall.EBUSY {
-			continue
+		if perr, ok := err.(*os.PathError); ok {
+			if perr.Err.(syscall.Errno) == syscall.EBUSY {
+				continue
+			}
 		}
 
 		return nil, err
