@@ -1,4 +1,4 @@
-raw [![Build Status](https://travis-ci.org/mdlayher/raw.svg?branch=master)](https://travis-ci.org/mdlayher/raw) [![GoDoc](http://godoc.org/github.com/mdlayher/raw?status.svg)](http://godoc.org/github.com/mdlayher/raw)
+raw [![Build Status](https://travis-ci.org/mdlayher/raw.svg?branch=master)](https://travis-ci.org/mdlayher/raw) [![GoDoc](https://godoc.org/github.com/mdlayher/raw?status.svg)](https://godoc.org/github.com/mdlayher/raw) [![Go Report Card](https://goreportcard.com/badge/github.com/mdlayher/raw)](https://goreportcard.com/report/github.com/mdlayher/raw)
 ===
 
 Package `raw` enables reading and writing data at the device driver level for
