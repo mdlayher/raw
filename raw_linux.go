@@ -304,6 +304,6 @@ func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) erro
 // timeSleeper sleeps using time.Sleep.
 type timeSleeper struct{}
 
-func (_ timeSleeper) Sleep(d time.Duration) {
+func (timeSleeper) Sleep(d time.Duration) {
 	time.Sleep(d)
 }
