@@ -200,7 +200,7 @@ func configureBPF(fd int, ifi *net.Interface, proto Protocol) (int, error) {
 	}
 
 	// Do not automatically complete source address in ethernet headers
-	if err := syscall.SetBpfHeadercmpl(fd, 0); err != nil {
+	if err := syscall.SetBpfHeadercmpl(fd, 1); err != nil {
 		return 0, err
 	}
 
