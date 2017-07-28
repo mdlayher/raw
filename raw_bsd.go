@@ -180,6 +180,18 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return syscall.SetBpf(p.fd, assembleBpfInsn(append(base, filter...)))
 }
 
+// SetPromisc enables/disables interface promiscuous mode through BPF syscall
+// when thread exits interface returns to previous state at least on freeBSD
+// 0 == disabled, 1 == enabled
+// BIOCPROMISC
+func (p *packetConn) SetPromisc(m int) error {
+	if err := syscall.SetBpfPromisc(p.fd, m); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // configureBPF configures a BPF device with the specified file descriptor to
 // use the specified network and interface and protocol.
 func configureBPF(fd int, ifi *net.Interface, proto Protocol) (int, error) {
@@ -200,7 +212,7 @@ func configureBPF(fd int, ifi *net.Interface, proto Protocol) (int, error) {
 	}
 
 	// Do not automatically complete source address in ethernet headers
-	if err := syscall.SetBpfHeadercmpl(fd, 0); err != nil {
+	if err := syscall.SetBpfHeadercmpl(fd, 1); err != nil {
 		return 0, err
 	}
 

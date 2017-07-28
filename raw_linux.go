@@ -279,6 +279,34 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	)
 }
 
+// SetPromisc enables/disables interface promiscuous mode through syscall
+// when thread exits interface returns to previous state
+// 0 == disabled, 1 == enabled
+type packet_mreq struct {
+	mr_ifindex int32
+	mr_type    uint16
+	mr_alen    uint16
+	mr_address [8]byte
+}
+
+func (p *packetConn) SetPromisc(m int) error {
+	mreq := packet_mreq{
+		mr_ifindex: int32(p.ifi.Index),
+		mr_type:    syscall.PACKET_MR_PROMISC,
+	}
+
+	membership := syscall.PACKET_ADD_MEMBERSHIP
+	if m == 0 {
+		membership = syscall.PACKET_DROP_MEMBERSHIP
+	}
+
+	if err := p.s.SetSockopt(syscall.SOL_PACKET, membership, unsafe.Pointer(&mreq), uint32(unsafe.Sizeof(mreq))); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // sysSocket is the default socket implementation.  It makes use of
 // Linux-specific system calls to handle raw socket functionality.
 type sysSocket struct {
