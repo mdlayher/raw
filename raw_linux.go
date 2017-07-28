@@ -267,16 +267,17 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 		Filter: (*syscall.SockFilter)(unsafe.Pointer(&filter[0])),
 	}
 
-	return os.NewSyscallError(
-		"setsockopt",
-		setsockopt(
-			p.s.FD(),
-			syscall.SOL_SOCKET,
-			syscall.SO_ATTACH_FILTER,
-			unsafe.Pointer(&prog),
-			uint32(unsafe.Sizeof(prog)),
-		),
+	err := p.s.SetSockopt(
+		syscall.SOL_SOCKET,
+		syscall.SO_ATTACH_FILTER,
+		unsafe.Pointer(&prog),
+		uint32(unsafe.Sizeof(prog)),
 	)
+	if err != nil {
+		return os.NewSyscallError("setsockopt", err)
+	}
+
+	return nil
 }
 
 // sysSocket is the default socket implementation.  It makes use of

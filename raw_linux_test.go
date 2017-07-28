@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"golang.org/x/net/bpf"
 )
 
 // Test to ensure that socket is bound with correct sockaddr_ll information
@@ -447,6 +449,50 @@ func Test_packetConnSetNonblock(t *testing.T) {
 	}
 	if want, got := false, s.nonblocking; want != got {
 		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
+	}
+}
+
+// Test that BPF filter attachment works as intended.
+
+type setSockoptSocket struct {
+	setsockopt func(level, name int, v unsafe.Pointer, l uint32) error
+	noopSocket
+}
+
+func (s *setSockoptSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
+	return s.setsockopt(level, name, v, l)
+}
+
+func Test_packetConnSetBPF(t *testing.T) {
+	filter, err := bpf.Assemble([]bpf.Instruction{
+		bpf.RetConstant{Val: 0},
+	})
+	if err != nil {
+		t.Fatalf("failed to assemble filter: %v", err)
+	}
+
+	fn := func(level, name int, _ unsafe.Pointer, _ uint32) error {
+		// Though we can't check the filter itself, we can check the setsockopt
+		// level and name for correctness.
+		if want, got := syscall.SOL_SOCKET, level; want != got {
+			t.Fatalf("unexpected setsockopt level:\n- want: %v\n-  got: %v", want, got)
+		}
+		if want, got := syscall.SO_ATTACH_FILTER, name; want != got {
+			t.Fatalf("unexpected setsockopt name:\n- want: %v\n-  got: %v", want, got)
+		}
+
+		return nil
+	}
+
+	s := &setSockoptSocket{
+		setsockopt: fn,
+	}
+	p := &packetConn{
+		s: s,
+	}
+
+	if err := p.SetBPF(filter); err != nil {
+		t.Fatalf("failed to attach filter: %v", err)
 	}
 }
 
