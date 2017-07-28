@@ -62,8 +62,7 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return ErrNotImplemented
 }
 
-
 // SetPromisc is not currently implemented on this platform.
-func (p *packetConn) SetPromisc(m int) error {
+func (p *packetConn) SetPromiscuous(b bool) error {
 	return ErrNotImplemented
 }

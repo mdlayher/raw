@@ -180,16 +180,16 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return syscall.SetBpf(p.fd, assembleBpfInsn(append(base, filter...)))
 }
 
-// SetPromisc enables/disables interface promiscuous mode through BPF syscall
-// when thread exits interface returns to previous state at least on freeBSD
-// 0 == disabled, 1 == enabled
-// BIOCPROMISC
-func (p *packetConn) SetPromisc(m int) error {
-	if err := syscall.SetBpfPromisc(p.fd, m); err != nil {
-		return err
+// SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
+// to receive traffic that is not addressed to the interface.
+func (p *packetConn) SetPromiscuous(b bool) error {
+
+	m := 1
+	if !b {
+		m = 0
 	}
 
-	return nil
+	return syscall.SetBpfPromisc(p.fd, m)
 }
 
 // configureBPF configures a BPF device with the specified file descriptor to

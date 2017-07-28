@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/context"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -279,32 +280,31 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	)
 }
 
-// SetPromisc enables/disables interface promiscuous mode through syscall
-// when thread exits interface returns to previous state
-// 0 == disabled, 1 == enabled
+// Use PacketMreq and SizeofPacketMreq when its added to upstream /x/sys/unix
+// https://go-review.googlesource.com/q/I34e5b99a6b6eb1f23d49a9c9f25ce7b77121c8f0
 type packet_mreq struct {
-	mr_ifindex int32
-	mr_type    uint16
-	mr_alen    uint16
-	mr_address [8]byte
+	Ifindex int32
+	Type    uint16
+	Alen    uint16
+	Address [8]uint8
 }
 
-func (p *packetConn) SetPromisc(m int) error {
+const Sizeofpacket_mreq = 0x10
+
+// SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
+// to receive traffic that is not addressed to the interface.
+func (p *packetConn) SetPromiscuous(b bool) error {
 	mreq := packet_mreq{
-		mr_ifindex: int32(p.ifi.Index),
-		mr_type:    syscall.PACKET_MR_PROMISC,
+		Ifindex: int32(p.ifi.Index),
+		Type:    unix.PACKET_MR_PROMISC,
 	}
 
-	membership := syscall.PACKET_ADD_MEMBERSHIP
-	if m == 0 {
-		membership = syscall.PACKET_DROP_MEMBERSHIP
+	membership := unix.PACKET_ADD_MEMBERSHIP
+	if !b {
+		membership = unix.PACKET_DROP_MEMBERSHIP
 	}
 
-	if err := p.s.SetSockopt(syscall.SOL_PACKET, membership, unsafe.Pointer(&mreq), uint32(unsafe.Sizeof(mreq))); err != nil {
-		return err
-	}
-
-	return nil
+	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), Sizeofpacket_mreq)
 }
 
 // sysSocket is the default socket implementation.  It makes use of
