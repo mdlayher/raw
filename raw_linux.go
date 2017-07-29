@@ -280,21 +280,10 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	)
 }
 
-// Use PacketMreq and SizeofPacketMreq when its added to upstream /x/sys/unix
-// https://go-review.googlesource.com/q/I34e5b99a6b6eb1f23d49a9c9f25ce7b77121c8f0
-type packet_mreq struct {
-	Ifindex int32
-	Type    uint16
-	Alen    uint16
-	Address [8]uint8
-}
-
-const Sizeofpacket_mreq = 0x10
-
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
 // to receive traffic that is not addressed to the interface.
 func (p *packetConn) SetPromiscuous(b bool) error {
-	mreq := packet_mreq{
+	mreq := unix.PacketMreq{
 		Ifindex: int32(p.ifi.Index),
 		Type:    unix.PACKET_MR_PROMISC,
 	}
@@ -304,7 +293,7 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 		membership = unix.PACKET_DROP_MEMBERSHIP
 	}
 
-	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), Sizeofpacket_mreq)
+	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
 // sysSocket is the default socket implementation.  It makes use of
