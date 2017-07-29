@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/context"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -278,6 +279,22 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	}
 
 	return nil
+}
+
+// SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
+// to receive traffic that is not addressed to the interface.
+func (p *packetConn) SetPromiscuous(b bool) error {
+	mreq := unix.PacketMreq{
+		Ifindex: int32(p.ifi.Index),
+		Type:    unix.PACKET_MR_PROMISC,
+	}
+
+	membership := unix.PACKET_ADD_MEMBERSHIP
+	if !b {
+		membership = unix.PACKET_DROP_MEMBERSHIP
+	}
+
+	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
 // sysSocket is the default socket implementation.  It makes use of

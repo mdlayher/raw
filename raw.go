@@ -97,6 +97,12 @@ func (c *Conn) SetBPF(filter []bpf.RawInstruction) error {
 	return c.p.SetBPF(filter)
 }
 
+// SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
+// to receive traffic that is not addressed to the interface.
+func (c *Conn) SetPromiscuous(b bool) error {
+	return c.p.SetPromiscuous(b)
+}
+
 // A Protocol is a network protocol constant which identifies the type of
 // traffic a raw socket should send and receive.
 type Protocol uint16
