@@ -66,3 +66,8 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 func (p *packetConn) SetPromiscuous(b bool) error {
 	return ErrNotImplemented
 }
+
+// SetMulticast is not currently implemented on this platform.
+func (p *packetConn) SetMulticast(b bool, addr net.HardwareAddr) error {
+	return ErrNotImplemented
+}

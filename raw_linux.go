@@ -297,6 +297,29 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
+// SetMulticast joins or drops membership of data link layer multicast address on interface,
+// allowing it to recieve multicast traffic.
+func (p *packetConn) SetMulticast(b bool, addr net.HardwareAddr) error {
+	// Convert hardware address back to byte array form
+	var baddr [8]byte
+
+	copy(baddr[:], addr)
+
+	mreq := unix.PacketMreq{
+		Ifindex: int32(p.ifi.Index),
+		Type:    unix.PACKET_MR_MULTICAST,
+		Alen:    uint16(len(addr)),
+		Address: baddr,
+	}
+
+	membership := unix.PACKET_ADD_MEMBERSHIP
+	if !b {
+		membership = unix.PACKET_DROP_MEMBERSHIP
+	}
+
+	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
+}
+
 // sysSocket is the default socket implementation.  It makes use of
 // Linux-specific system calls to handle raw socket functionality.
 type sysSocket struct {

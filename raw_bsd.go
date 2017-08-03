@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"runtime"
 	"syscall"
 	"time"
 	"unsafe"
 
 	"golang.org/x/net/bpf"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -49,11 +51,12 @@ var (
 // packetConn is the Linux-specific implementation of net.PacketConn for this
 // package.
 type packetConn struct {
-	proto  Protocol
-	ifi    *net.Interface
-	f      *os.File
-	fd     int
-	buflen int
+	proto       Protocol
+	ifi         *net.Interface
+	f           *os.File
+	fd          int
+	buflen      int
+	mcastGroups []net.HardwareAddr
 }
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
@@ -142,6 +145,11 @@ func (p *packetConn) WriteTo(b []byte, _ net.Addr) (int, error) {
 
 // Close closes the connection.
 func (p *packetConn) Close() error {
+	// drop any mcast addresses that were joined from the interface
+	for _, HardwareAddr := range p.mcastGroups {
+		p.SetMulticast(false, HardwareAddr) // ignore errors
+	}
+
 	return p.f.Close()
 }
 
@@ -190,6 +198,73 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	}
 
 	return syscall.SetBpfPromisc(p.fd, m)
+}
+
+// ifReq is the BSD struct passed to ioctl for multicast add/drop operations.
+type ifReq struct {
+	ifrName [unix.IFNAMSIZ]uint8
+	ifrAddr unix.SockaddrDatalink
+}
+
+const etherAdderAlen = 6
+
+// JoinMulticast joins or drops membership of data link layer multicast address on interface,
+// allowing it to recieve multicast traffic.
+func (p *packetConn) SetMulticast(b bool, addr net.HardwareAddr) error {
+	// Convert hardware address back to byte array form
+	var baddr [8]byte
+	copy(baddr[:], addr)
+
+	s, err := syscall.Socket(unix.AF_INET, unix.SOCK_DGRAM, unix.IPPROTO_UDP)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(s)
+
+	SockaddrDataLink := unix.SockaddrDatalink{
+		Len:    unix.SizeofSockaddrDatalink,
+		Family: unix.AF_LINK,
+		Index:  0,
+		Type:   0,
+		Nlen:   0,
+		Alen:   etherAdderAlen,
+		Slen:   0,
+	}
+
+	for i, v := range baddr {
+		SockaddrDataLink.Data[i] = int8(v)
+	}
+
+	ifr := ifReq{
+		ifrAddr: SockaddrDataLink,
+	}
+
+	copy(ifr.ifrName[:], p.ifi.Name)
+
+	membership := unix.SIOCADDMULTI
+	if !b {
+		membership = unix.SIOCDELMULTI
+	}
+
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(s), uintptr(membership), uintptr(unsafe.Pointer(&ifr)))
+
+	if errno != 0 {
+		return error(errno)
+	}
+
+	// Append data link layer address to slice for tracking so it can be dropped later with .Close()
+	if b {
+		p.mcastGroups = append(p.mcastGroups, addr)
+	} else {
+		for i, m := range p.mcastGroups {
+			if reflect.DeepEqual(m, addr) { // cannot compare slices
+				p.mcastGroups = append(p.mcastGroups[:i], p.mcastGroups[i+1:]...) // remove address from tracking slice so as not to attempt drop on .Close()
+				break
+			}
+		}
+	}
+
+	return nil
 }
 
 // configureBPF configures a BPF device with the specified file descriptor to
