@@ -8,11 +8,13 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
 
 	"golang.org/x/net/bpf"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -54,6 +56,10 @@ type packetConn struct {
 	f      *os.File
 	fd     int
 	buflen int
+
+	// Timeouts set via Set{Read,}Deadline, guarded by mutex
+	timeoutMu sync.RWMutex
+	rtimeout  time.Time
 }
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
@@ -111,6 +117,31 @@ func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.
 func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
+
+	if !p.rtimeout.IsZero() {
+		p.timeoutMu.Lock()
+		duration := p.rtimeout.Sub(time.Now())
+		p.timeoutMu.Unlock()
+
+		if duration < 0 {
+			return 0, nil, errors.New("timeout")
+		}
+
+		pollFds := []unix.PollFd{{
+			Fd:     int32(p.fd),
+			Events: unix.POLLIN | unix.POLLERR | unix.POLLHUP,
+		}}
+
+		_, err := unix.Poll(pollFds, int(duration.Nanoseconds()/1000/1000))
+		if err != nil {
+			return 0, nil, err
+		}
+
+		if pollFds[0].Revents&unix.POLLIN == 0 {
+			return 0, nil, errors.New("nothing to be read")
+		}
+	}
+
 	// Attempt to receive on socket
 	buf := make([]byte, p.buflen)
 	n, err := syscall.Read(p.fd, buf)
@@ -154,12 +185,15 @@ func (p *packetConn) LocalAddr() net.Addr {
 
 // SetDeadline implements the net.PacketConn.SetDeadline method.
 func (p *packetConn) SetDeadline(t time.Time) error {
-	return ErrNotImplemented
+	return p.SetReadDeadline(t)
 }
 
 // SetReadDeadline implements the net.PacketConn.SetReadDeadline method.
 func (p *packetConn) SetReadDeadline(t time.Time) error {
-	return ErrNotImplemented
+	p.timeoutMu.Lock()
+	p.rtimeout = t
+	p.timeoutMu.Unlock()
+	return nil
 }
 
 // SetWriteDeadline implements the net.PacketConn.SetWriteDeadline method.
