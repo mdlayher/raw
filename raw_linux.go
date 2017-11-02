@@ -107,6 +107,8 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	p.timeoutMu.Unlock()
 
 	if hasTimeout && timeout < time.Microsecond {
+		// A timeout less than a microsend results in a zero Timeval
+		// that disables the timeout. Return a timeout error in this case.
 		return 0, nil, &timeoutError{}
 	}
 
