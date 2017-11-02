@@ -130,13 +130,14 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	for {
 		// Attempt to receive on socket
 		n, addr, err = p.s.Recvfrom(b, 0)
+
+		if err == syscall.EAGAIN {
+			return n, nil, &timeoutError{}
+		}
 		if err != nil {
 			n = 0
 			// Return on error
 			return n, nil, err
-		}
-		if n == 0 {
-			return n, nil, &timeoutError{}
 		}
 
 		// Got data, cancel the deadline
