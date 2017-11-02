@@ -117,37 +117,37 @@ func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.
 func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	var timeout time.Duration
+	var hasTimeout bool
 
+	p.timeoutMu.Lock()
 	if !p.rtimeout.IsZero() {
-		p.timeoutMu.Lock()
-		duration := p.rtimeout.Sub(time.Now())
-		p.timeoutMu.Unlock()
+		timeout = p.rtimeout.Sub(time.Now())
+		hasTimeout = true
+	}
+	p.timeoutMu.Unlock()
 
-		if duration < 0 {
-			return 0, nil, errors.New("timeout")
-		}
+	if hasTimeout && timeout < time.Microsecond {
+		return 0, nil, &timeoutError{}
+	}
 
-		pollFds := []unix.PollFd{{
-			Fd:     int32(p.fd),
-			Events: unix.POLLIN | unix.POLLERR | unix.POLLHUP,
-		}}
+	tv := &unix.Timeval{
+		Sec:  int64(timeout / time.Second),
+		Usec: int64(timeout % time.Second / time.Microsecond),
+	}
 
-		_, err := unix.Poll(pollFds, int(duration.Nanoseconds()/1000/1000))
-		if err != nil {
-			return 0, nil, err
-		}
-
-		if pollFds[0].Revents&unix.POLLIN == 0 {
-			return 0, nil, errors.New("nothing to be read")
-		}
+	if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(tv))); err != 0 {
+		return 0, nil, syscall.Errno(err)
 	}
 
 	// Attempt to receive on socket
 	buf := make([]byte, p.buflen)
 	n, err := syscall.Read(p.fd, buf)
 	if err != nil {
-		// Return other errors
 		return n, nil, err
+	}
+	if n == 0 {
+		return n, nil, &timeoutError{}
 	}
 
 	// TODO(mdlayher): consider parsing BPF header if it proves useful.

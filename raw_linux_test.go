@@ -6,10 +6,8 @@ import (
 	"bytes"
 	"errors"
 	"net"
-	"sync/atomic"
 	"syscall"
 	"testing"
-	"time"
 	"unsafe"
 
 	"golang.org/x/net/bpf"
@@ -39,7 +37,6 @@ func Test_newPacketConnBind(t *testing.T) {
 		},
 		s,
 		protocol,
-		&testSleeper{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -80,8 +77,6 @@ func (s *errRetryNRecvfromSocket) Recvfrom(p []byte, flags int) (int, syscall.So
 func Test_packetConnReadFromRecvfromRetryNError(t *testing.T) {
 	fooErr := errors.New("foo")
 
-	ts := &testSleeper{}
-
 	const n = 5
 
 	p, err := newPacketConn(
@@ -91,7 +86,6 @@ func Test_packetConnReadFromRecvfromRetryNError(t *testing.T) {
 			err: fooErr,
 		},
 		0,
-		ts,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -100,10 +94,6 @@ func Test_packetConnReadFromRecvfromRetryNError(t *testing.T) {
 	_, _, err = p.ReadFrom(nil)
 	if want, got := fooErr, err; want != got {
 		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	if want, got := n*(2*time.Millisecond), time.Duration(ts.slept); want != got {
-		t.Fatalf("unexpected mock sleep time:\n- want: %v\n-  got: %v", want, got)
 	}
 }
 
@@ -125,7 +115,6 @@ func Test_packetConnReadFromRecvfromInvalidSockaddr(t *testing.T) {
 			addr: &syscall.SockaddrInet4{},
 		},
 		0,
-		&testSleeper{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +137,6 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 			},
 		},
 		0,
-		&testSleeper{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +180,6 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 		&net.Interface{},
 		s,
 		0,
-		&testSleeper{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -275,7 +262,6 @@ func Test_packetConnWriteToSendtoOK(t *testing.T) {
 		&net.Interface{},
 		s,
 		0,
-		&testSleeper{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -353,105 +339,6 @@ func Test_packetConnLocalAddr(t *testing.T) {
 	}
 }
 
-// Test to ensure that nonblocking mode appropriately toggles depending on
-// input, and that it remains toggled correctly for various inputs.
-
-type setNonblockSocket struct {
-	nonblocking bool
-	triggered   bool
-	noopSocket
-}
-
-func (s *setNonblockSocket) SetNonblock(nonblocking bool) error {
-	s.nonblocking = nonblocking
-	s.triggered = true
-	return nil
-}
-
-func Test_packetConnSetNonblock(t *testing.T) {
-	s := &setNonblockSocket{}
-
-	p, err := newPacketConn(
-		&net.Interface{},
-		s,
-		0,
-		&testSleeper{},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test 1: socket should remain blocking due to zero time, SetNonblock
-	// should never have been triggered
-	if err := p.SetDeadline(time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	if want, got := false, s.triggered; want != got {
-		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := false, s.nonblocking; want != got {
-		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	// Reset trigger
-	s.triggered = false
-
-	// Test 2: socket should become nonblocking due to time after now
-	if err := p.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if want, got := true, s.triggered; want != got {
-		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := true, s.nonblocking; want != got {
-		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	// Reset trigger
-	s.triggered = false
-
-	// Test 3: socket should remain nonblocking due to time after now, but not
-	// trigger the system call again
-	if err := p.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if want, got := false, s.triggered; want != got {
-		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := true, s.nonblocking; want != got {
-		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	// Reset trigger
-	s.triggered = false
-
-	// Test 4: socket should become blocking due to zero time
-	if err := p.SetDeadline(time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	if want, got := true, s.triggered; want != got {
-		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := false, s.nonblocking; want != got {
-		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	// Reset trigger
-	s.triggered = false
-
-	// Test 5: socket should remain blocking due to zero time, but not trigger
-	// the system call again
-	if err := p.SetDeadline(time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	if want, got := false, s.triggered; want != got {
-		t.Fatalf("unexpected triggered boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := false, s.nonblocking; want != got {
-		t.Fatalf("unexpected nonblocking boolean:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
 // Test that BPF filter attachment works as intended.
 
 type setSockoptSocket struct {
@@ -496,16 +383,6 @@ func Test_packetConnSetBPF(t *testing.T) {
 	}
 }
 
-// testSleeper is a sleeper implementation which atomically increments a
-// counter to indicate how long it has slept.
-type testSleeper struct {
-	slept int64
-}
-
-func (t *testSleeper) Sleep(d time.Duration) {
-	atomic.AddInt64(&t.slept, int64(d))
-}
-
 // noopSocket is a socket implementation which noops every operation.  It is
 // the basis for more specific socket implementations.
 type noopSocket struct{}
@@ -515,5 +392,4 @@ func (noopSocket) Close() error                                                 
 func (noopSocket) FD() int                                                      { return 0 }
 func (noopSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error)  { return 0, nil, nil }
 func (noopSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error        { return nil }
-func (noopSocket) SetNonblock(nonblocking bool) error                           { return nil }
 func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error { return nil }
