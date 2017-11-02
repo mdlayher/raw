@@ -24,6 +24,8 @@ const (
 
 	// osFreeBSD is the GOOS name for FreeBSD.
 	osFreeBSD = "freebsd"
+
+	readInterval time.Duration = time.Millisecond * 200
 )
 
 // bpfLen returns the length of the BPF header prepended to each incoming ethernet
@@ -117,39 +119,48 @@ func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.
 func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	var timeout time.Duration
-	var hasTimeout bool
-
 	p.timeoutMu.Lock()
-	if !p.rtimeout.IsZero() {
-		timeout = p.rtimeout.Sub(time.Now())
-		hasTimeout = true
-	}
+	deadline := p.rtimeout
 	p.timeoutMu.Unlock()
 
-	if hasTimeout && timeout < time.Microsecond {
-		// A timeout less than a microsend results in a zero Timeval
-		// that disables the timeout. Return a timeout error in this case.
-		return 0, nil, &timeoutError{}
-	}
-
-	tv := &unix.Timeval{
-		Sec:  int64(timeout / time.Second),
-		Usec: int64(timeout % time.Second / time.Microsecond),
-	}
-
-	if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(tv))); err != 0 {
-		return 0, nil, syscall.Errno(err)
-	}
-
-	// Attempt to receive on socket
 	buf := make([]byte, p.buflen)
-	n, err := syscall.Read(p.fd, buf)
-	if err != nil {
-		return n, nil, err
-	}
-	if n == 0 {
-		return n, nil, &timeoutError{}
+	var n int
+	var err error
+
+	for {
+		var timeout time.Duration
+
+		if deadline.IsZero() {
+			timeout = readInterval
+		} else {
+			timeout = deadline.Sub(time.Now())
+			if timeout < time.Microsecond {
+				// A timeout less than a microsecond results in a zero Timeval
+				// that disables the timeout. Return a timeout error in this case.
+				return 0, nil, &timeoutError{}
+			}
+			if timeout > readInterval {
+				timeout = readInterval
+			}
+		}
+
+		tv := &unix.Timeval{
+			Sec:  int64(timeout / time.Second),
+			Usec: int64(timeout % time.Second / time.Microsecond),
+		}
+
+		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(tv))); err != 0 {
+			return 0, nil, syscall.Errno(err)
+		}
+
+		// Attempt to receive on socket
+		n, err = syscall.Read(p.fd, buf)
+		if err != nil {
+			return n, nil, err
+		}
+		if n > 0 {
+			break
+		}
 	}
 
 	// TODO(mdlayher): consider parsing BPF header if it proves useful.
