@@ -316,7 +316,8 @@ func (s *sysSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
 }
 func (s *sysSocket) SetNonblock(nonblocking bool) error { return syscall.SetNonblock(s.fd, nonblocking) }
 func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
-	return setsockopt(s.fd, level, name, v, l)
+	_, _, err := syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(s.fd), uintptr(level), uintptr(name), uintptr(v), uintptr(l), 0)
+	return err
 }
 
 // timeSleeper sleeps using time.Sleep.
