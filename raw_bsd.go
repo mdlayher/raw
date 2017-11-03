@@ -14,7 +14,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/net/bpf"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -144,7 +143,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 			}
 		}
 
-		tv := &unix.Timeval{
+		tv := &syscall.Timeval{
 			Sec:  int64(timeout / time.Second),
 			Usec: int64(timeout % time.Second / time.Microsecond),
 		}

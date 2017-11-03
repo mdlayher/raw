@@ -125,12 +125,12 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 			}
 		}
 
-		tv := &unix.Timeval{
+		tv := &syscall.Timeval{
 			Sec:  int64(timeout / time.Second),
 			Usec: int64(timeout % time.Second / time.Microsecond),
 		}
 
-		err := unix.SetsockoptTimeval(int(p.s.FD()), unix.SOL_SOCKET, unix.SO_RCVTIMEO, tv)
+		err := syscall.SetsockoptTimeval(p.s.FD(), syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, tv)
 		if err != nil {
 			return 0, nil, err
 		}
