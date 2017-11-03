@@ -136,6 +136,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 
 		// Attempt to receive on socket
+		// The recvfrom sycall will NOT be interrupted by closing of the socket
 		n, addr, err = p.s.Recvfrom(b, 0)
 
 		if err == syscall.EAGAIN {

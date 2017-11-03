@@ -153,6 +153,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 
 		// Attempt to receive on socket
+		// The read sycall will NOT be interrupted by closing of the socket
 		n, err = syscall.Read(p.fd, buf)
 		if err != nil {
 			return n, nil, err
