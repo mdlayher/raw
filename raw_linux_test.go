@@ -4,10 +4,10 @@ package raw
 
 import (
 	"bytes"
-	"errors"
 	"net"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"golang.org/x/net/bpf"
@@ -52,48 +52,6 @@ func Test_newPacketConnBind(t *testing.T) {
 	}
 	if want, got := protocol, sall.Protocol; want != got {
 		t.Fatalf("unexpected protocol:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for errors which occur after several retries while attempting to
-// recvfrom on a socket.
-
-type errRetryNRecvfromSocket struct {
-	n   int
-	try int
-	err error
-	noopSocket
-}
-
-func (s *errRetryNRecvfromSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
-	if s.try == s.n {
-		return 0, nil, s.err
-	}
-
-	s.try++
-	return 0, nil, syscall.EAGAIN
-}
-
-func Test_packetConnReadFromRecvfromRetryNError(t *testing.T) {
-	fooErr := errors.New("foo")
-
-	const n = 5
-
-	p, err := newPacketConn(
-		&net.Interface{},
-		&errRetryNRecvfromSocket{
-			n:   n,
-			err: fooErr,
-		},
-		0,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = p.ReadFrom(nil)
-	if want, got := fooErr, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 	}
 }
 
@@ -393,3 +351,4 @@ func (noopSocket) FD() int                                                      
 func (noopSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error)  { return 0, nil, nil }
 func (noopSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error        { return nil }
 func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error { return nil }
+func (noopSocket) SetTimeout(timeout time.Duration) error                       { return nil }

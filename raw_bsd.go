@@ -143,12 +143,9 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 			}
 		}
 
-		tv := &syscall.Timeval{
-			Sec:  int64(timeout / time.Second),
-			Usec: int64(timeout % time.Second / time.Microsecond),
-		}
+		tv := newTimeval(timeout)
 
-		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(tv))); err != 0 {
+		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(&tv))); err != 0 {
 			return 0, nil, syscall.Errno(err)
 		}
 

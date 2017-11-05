@@ -43,6 +43,7 @@ type socket interface {
 	Recvfrom([]byte, int) (int, syscall.Sockaddr, error)
 	Sendto([]byte, int, syscall.Sockaddr) error
 	SetSockopt(level, name int, v unsafe.Pointer, l uint32) error
+	SetTimeout(time.Duration) error
 }
 
 // sleeper is an interface which enables swapping out an actual time.Sleep
@@ -112,25 +113,15 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		var timeout time.Duration
 
 		if deadline.IsZero() {
-			timeout = readInterval
+			timeout = readTimeout
 		} else {
 			timeout = deadline.Sub(time.Now())
-			if timeout < time.Microsecond {
-				// A timeout less than a microsecond results in a zero Timeval
-				// that disables the timeout. Return a timeout error in this case.
-				return 0, nil, &timeoutError{}
-			}
-			if timeout > readInterval {
-				timeout = readInterval
+			if timeout > readTimeout {
+				timeout = readTimeout
 			}
 		}
 
-		tv := &syscall.Timeval{
-			Sec:  int64(timeout / time.Second),
-			Usec: int64(timeout % time.Second / time.Microsecond),
-		}
-
-		err := syscall.SetsockoptTimeval(p.s.FD(), syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, tv)
+		err := p.s.SetTimeout(timeout)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -288,4 +279,12 @@ func (s *sysSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
 func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
 	_, _, err := syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(s.fd), uintptr(level), uintptr(name), uintptr(v), uintptr(l), 0)
 	return err
+}
+func (s *sysSocket) SetTimeout(timeout time.Duration) error {
+	tv := newTimeval(timeout)
+	if tv.Nano() == 0 {
+		// A zero timeout disables the timeout. Return a timeout error in this case.
+		return &timeoutError{}
+	}
+	return syscall.SetsockoptTimeval(s.fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv)
 }
