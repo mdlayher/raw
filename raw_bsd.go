@@ -23,8 +23,6 @@ const (
 
 	// osFreeBSD is the GOOS name for FreeBSD.
 	osFreeBSD = "freebsd"
-
-	readInterval time.Duration = time.Millisecond * 200
 )
 
 // bpfLen returns the length of the BPF header prepended to each incoming ethernet
@@ -130,20 +128,19 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		var timeout time.Duration
 
 		if deadline.IsZero() {
-			timeout = readInterval
+			timeout = readTimeout
 		} else {
 			timeout = deadline.Sub(time.Now())
-			if timeout < time.Microsecond {
-				// A timeout less than a microsecond results in a zero Timeval
-				// that disables the timeout. Return a timeout error in this case.
-				return 0, nil, &timeoutError{}
-			}
-			if timeout > readInterval {
-				timeout = readInterval
+			if timeout > readTimeout {
+				timeout = readTimeout
 			}
 		}
 
 		tv := newTimeval(timeout)
+		if tv.Nano() == 0 {
+			// A zero timeout disables the timeout. Return a timeout error in this case.
+			return 0, nil, &timeoutError{}
+		}
 
 		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(&tv))); err != 0 {
 			return 0, nil, syscall.Errno(err)

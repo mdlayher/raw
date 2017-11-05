@@ -19,10 +19,6 @@ var (
 	_ net.PacketConn = &packetConn{}
 )
 
-const (
-	readInterval time.Duration = time.Millisecond * 200
-)
-
 // packetConn is the Linux-specific implementation of net.PacketConn for this
 // package.
 type packetConn struct {
