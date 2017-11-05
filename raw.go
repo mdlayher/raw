@@ -103,6 +103,12 @@ func (c *Conn) SetPromiscuous(b bool) error {
 	return c.p.SetPromiscuous(b)
 }
 
+// SetMulticast joins or drops membership of data link layer multicast address on interface,
+// allowing it to recieve multicast traffic.
+func (c *Conn) SetMulticast(b bool, addr net.HardwareAddr) error {
+	return c.p.SetMulticast(b, addr)
+}
+
 // A Protocol is a network protocol constant which identifies the type of
 // traffic a raw socket should send and receive.
 type Protocol uint16
