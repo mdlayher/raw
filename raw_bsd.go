@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -54,6 +55,10 @@ type packetConn struct {
 	f      *os.File
 	fd     int
 	buflen int
+
+	// Timeouts set via Set{Read,}Deadline, guarded by mutex
+	timeoutMu sync.RWMutex
+	rtimeout  time.Time
 }
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
@@ -111,12 +116,45 @@ func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.
 func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
-	// Attempt to receive on socket
+	p.timeoutMu.Lock()
+	deadline := p.rtimeout
+	p.timeoutMu.Unlock()
+
 	buf := make([]byte, p.buflen)
-	n, err := syscall.Read(p.fd, buf)
-	if err != nil {
-		// Return other errors
-		return n, nil, err
+	var n int
+	var err error
+
+	for {
+		var timeout time.Duration
+
+		if deadline.IsZero() {
+			timeout = readTimeout
+		} else {
+			timeout = deadline.Sub(time.Now())
+			if timeout > readTimeout {
+				timeout = readTimeout
+			}
+		}
+
+		tv := newTimeval(timeout)
+		if tv.Nano() == 0 {
+			// A zero timeout disables the timeout. Return a timeout error in this case.
+			return 0, nil, &timeoutError{}
+		}
+
+		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(&tv))); err != 0 {
+			return 0, nil, syscall.Errno(err)
+		}
+
+		// Attempt to receive on socket
+		// The read sycall will NOT be interrupted by closing of the socket
+		n, err = syscall.Read(p.fd, buf)
+		if err != nil {
+			return n, nil, err
+		}
+		if n > 0 {
+			break
+		}
 	}
 
 	// TODO(mdlayher): consider parsing BPF header if it proves useful.
@@ -154,12 +192,15 @@ func (p *packetConn) LocalAddr() net.Addr {
 
 // SetDeadline implements the net.PacketConn.SetDeadline method.
 func (p *packetConn) SetDeadline(t time.Time) error {
-	return ErrNotImplemented
+	return p.SetReadDeadline(t)
 }
 
 // SetReadDeadline implements the net.PacketConn.SetReadDeadline method.
 func (p *packetConn) SetReadDeadline(t time.Time) error {
-	return ErrNotImplemented
+	p.timeoutMu.Lock()
+	p.rtimeout = t
+	p.timeoutMu.Unlock()
+	return nil
 }
 
 // SetWriteDeadline implements the net.PacketConn.SetWriteDeadline method.

@@ -19,6 +19,10 @@ const (
 
 	// ProtocolWoL specifies the Wake-on-LAN protocol.
 	ProtocolWoL Protocol = 0x0842
+
+	// Maximum read timeout per syscall.
+	// It is required because read/recvfrom won't be interrupted on closing of the file descriptor.
+	readTimeout = 200 * time.Millisecond
 )
 
 var (
