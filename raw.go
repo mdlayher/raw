@@ -22,7 +22,7 @@ const (
 
 	// Maximum read timeout per syscall.
 	// It is required because read/recvfrom won't be interrupted on closing of the file descriptor.
-	readTimeout time.Duration = time.Millisecond * 200
+	readTimeout = 200 * time.Millisecond
 )
 
 var (
