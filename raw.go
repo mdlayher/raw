@@ -98,10 +98,6 @@ func (c *Conn) SetPromiscuous(b bool) error {
 	return c.p.SetPromiscuous(b)
 }
 
-// A Protocol is a network protocol constant which identifies the type of
-// traffic a raw socket should send and receive.
-type Protocol uint16
-
 // ListenPacket creates a net.PacketConn which can be used to send and receive
 // data at the network interface device driver level.
 //
