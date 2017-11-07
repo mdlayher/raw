@@ -50,14 +50,9 @@ type sleeper interface {
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
-//
-// ifi specifies the network interface which will be used to send and receive
-// data.  proto specifies the protocol which should be captured and
-// transmitted.  proto is automatically converted to network byte
-// order (big endian), akin to the htons() function in C.
-func listenPacket(ifi *net.Interface, proto Protocol) (*packetConn, error) {
+func listenPacket(ifi *net.Interface, proto uint16) (*packetConn, error) {
 	// Convert proto to big endian
-	pbe := htons(uint16(proto))
+	pbe := htons(proto)
 
 	// Open a packet socket using specified socket and protocol types
 	sock, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(pbe))
