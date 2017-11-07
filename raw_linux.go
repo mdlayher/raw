@@ -278,8 +278,8 @@ func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) erro
 }
 func (s *sysSocket) SetTimeout(timeout time.Duration) error {
 	tv := newTimeval(timeout)
-	if tv.Nano() == 0 {
-		// A zero timeout disables the timeout. Return a timeout error in this case.
+	if tv.Nano() <= 0 {
+		// A zero or negative timeout disables the timeout. Return a timeout error in this case.
 		return &timeoutError{}
 	}
 	return syscall.SetsockoptTimeval(s.fd, syscall.SOL_SOCKET, syscall.SO_RCVTIMEO, &tv)
