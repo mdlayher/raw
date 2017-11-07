@@ -118,7 +118,6 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 
 	buf := make([]byte, p.buflen)
 	var n int
-	var err error
 
 	for {
 		var timeout time.Duration
@@ -132,13 +131,11 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 			}
 		}
 
-		tv := newTimeval(timeout)
-		if tv.Nano() == 0 {
-			// A zero timeout disables the timeout. Return a timeout error in this case.
-			return 0, nil, &timeoutError{}
+		tv, err := newTimeval(timeout)
+		if err != nil {
+			return 0, nil, err
 		}
-
-		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(&tv))); err != 0 {
+		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(tv))); err != 0 {
 			return 0, nil, syscall.Errno(err)
 		}
 
