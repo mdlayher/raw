@@ -79,10 +79,17 @@ func newPacketConn(ifi *net.Interface, s socket, pbe uint16) (*packetConn, error
 	// packet(7):
 	//   Only the sll_protocol and the sll_ifindex address fields are used for
 	//   purposes of binding.
-	err := s.Bind(&syscall.SockaddrLinklayer{
-		Protocol: pbe,
-		Ifindex:  ifi.Index,
-	})
+	var err error
+	if ifi != nil {
+		err = s.Bind(&syscall.SockaddrLinklayer{
+			Protocol: pbe,
+			Ifindex:  ifi.Index,
+		})
+	} else {
+		err = s.Bind(&syscall.SockaddrLinklayer{
+			Protocol: pbe,
+		})
+	}
 
 	return &packetConn{
 		ifi: ifi,
@@ -152,6 +159,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	// non-Linux platforms
 	return n, &Addr{
 		HardwareAddr: mac,
+		Ifi:          sa.Ifindex,
 	}, nil
 }
 
@@ -167,13 +175,20 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	var baddr [8]byte
 	copy(baddr[:], a.HardwareAddr)
 
+	// use the interface index from addr
+	// if packetConn has an index, we use that instead
+	ifi := a.Ifi
+	if p.ifi != nil {
+		ifi = p.ifi.Index
+	}
+
 	// Send message on socket to the specified hardware address from addr
 	// packet(7):
 	//   When you send packets it is enough to specify sll_family, sll_addr,
 	//   sll_halen, sll_ifindex.  The other fields should  be 0.
 	// In this case, sll_family is taken care of automatically by syscall
 	err := p.s.Sendto(b, 0, &syscall.SockaddrLinklayer{
-		Ifindex: p.ifi.Index,
+		Ifindex: ifi,
 		Halen:   uint8(len(a.HardwareAddr)),
 		Addr:    baddr,
 	})

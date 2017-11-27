@@ -28,6 +28,7 @@ var _ net.Addr = &Addr{}
 // their hardware addresses.
 type Addr struct {
 	HardwareAddr net.HardwareAddr
+	Ifi int
 }
 
 // Network returns the address's network name, "raw".
