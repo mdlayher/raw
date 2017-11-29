@@ -182,11 +182,20 @@ func Test_packetConnWriteToInvalidSockaddr(t *testing.T) {
 // Test for malformed hardware address with WriteTo.
 
 func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
-	_, err := (&packetConn{}).WriteTo(nil, &Addr{
-		HardwareAddr: net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde},
-	})
-	if want, got := syscall.EINVAL, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
+	addrs := []net.HardwareAddr{
+		// Too short.
+		{0xde, 0xad, 0xbe, 0xef, 0xde},
+		// Explicitly nil.
+		nil,
+	}
+
+	for _, addr := range addrs {
+		_, err := (&packetConn{}).WriteTo(nil, &Addr{
+			HardwareAddr: addr,
+		})
+		if want, got := syscall.EINVAL, err; want != got {
+			t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
+		}
 	}
 }
 
