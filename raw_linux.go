@@ -269,7 +269,10 @@ func (s *sysSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
 }
 func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
 	_, _, err := syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(s.fd), uintptr(level), uintptr(name), uintptr(v), uintptr(l), 0)
-	return err
+	if err != 0 {
+		return syscall.Errno(err)
+	}
+	return nil
 }
 func (s *sysSocket) SetTimeout(timeout time.Duration) error {
 	tv, err := newTimeval(timeout)
