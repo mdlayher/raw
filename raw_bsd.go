@@ -63,9 +63,13 @@ type packetConn struct {
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
-func listenPacket(ifi *net.Interface, proto uint16) (*packetConn, error) {
+func listenPacket(ifi *net.Interface, proto uint16, layer AccessLayer) (*packetConn, error) {
 	var f *os.File
 	var err error
+
+	if layer != LinkLayer {
+		return nil, fmt.Errorf("unsupported access layer on bsd: %d", layer)
+	}
 
 	// Try to find an available BPF device
 	for i := 0; i <= 10; i++ {

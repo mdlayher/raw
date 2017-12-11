@@ -3,6 +3,7 @@
 package raw
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -50,12 +51,22 @@ type sleeper interface {
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
-func listenPacket(ifi *net.Interface, proto uint16) (*packetConn, error) {
+func listenPacket(ifi *net.Interface, proto uint16, layer AccessLayer) (*packetConn, error) {
 	// Convert proto to big endian
 	pbe := htons(proto)
 
+	var typ int
+	switch layer {
+	case LinkLayer:
+		typ = syscall.SOCK_RAW
+	case NetworkLayer:
+		typ = syscall.SOCK_DGRAM
+	default:
+		return nil, fmt.Errorf("unrecognized access layer")
+	}
+
 	// Open a packet socket using specified socket and protocol types
-	sock, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(pbe))
+	sock, err := syscall.Socket(syscall.AF_PACKET, typ, int(pbe))
 	if err != nil {
 		return nil, err
 	}
