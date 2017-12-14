@@ -98,6 +98,19 @@ func (c *Conn) SetPromiscuous(b bool) error {
 	return c.p.SetPromiscuous(b)
 }
 
+// AccessLayer is the packet access layer.
+type AccessLayer uint8
+
+const (
+	// LinkLayer means packets are interpreted to have a link layer header
+	// (e.g. ethernet).
+	LinkLayer AccessLayer = iota
+
+	// NetworkLayer means packets are interpreted to have a network layer
+	// header. The kernel will take care of the link layer header.
+	NetworkLayer
+)
+
 // ListenPacket creates a net.PacketConn which can be used to send and receive
 // data at the network interface device driver level.
 //
@@ -105,8 +118,8 @@ func (c *Conn) SetPromiscuous(b bool) error {
 // data.  proto specifies the protocol (usually the EtherType) which should be
 // captured and transmitted.  proto, if needed, is automatically converted to
 // network byte order (big endian), akin to the htons() function in C.
-func ListenPacket(ifi *net.Interface, proto uint16) (*Conn, error) {
-	p, err := listenPacket(ifi, proto)
+func ListenPacket(ifi *net.Interface, proto uint16, layer AccessLayer) (*Conn, error) {
+	p, err := listenPacket(ifi, proto, layer)
 	if err != nil {
 		return nil, err
 	}
