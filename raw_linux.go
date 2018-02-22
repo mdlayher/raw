@@ -42,12 +42,6 @@ type socket interface {
 	SetTimeout(time.Duration) error
 }
 
-// sleeper is an interface which enables swapping out an actual time.Sleep
-// call for testing.
-type sleeper interface {
-	Sleep(time.Duration)
-}
-
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
 func listenPacket(ifi *net.Interface, proto uint16, cfg *Config) (*packetConn, error) {
@@ -66,7 +60,7 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg *Config) (*packetConn, e
 		return nil, err
 	}
 
-	// Wrap raw socket in socket interface, use actual time package sleeper
+	// Wrap raw socket in socket interface.
 	return newPacketConn(
 		ifi,
 		&sysSocket{
