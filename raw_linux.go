@@ -24,6 +24,7 @@ var (
 type packetConn struct {
 	ifi *net.Interface
 	s   socket
+	pbe uint16
 
 	// Timeouts set via Set{Read,}Deadline, guarded by mutex
 	timeoutMu sync.RWMutex
@@ -87,6 +88,7 @@ func newPacketConn(ifi *net.Interface, s socket, pbe uint16) (*packetConn, error
 	return &packetConn{
 		ifi: ifi,
 		s:   s,
+		pbe: pbe,
 	}, err
 }
 
@@ -170,12 +172,14 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Send message on socket to the specified hardware address from addr
 	// packet(7):
 	//   When you send packets it is enough to specify sll_family, sll_addr,
-	//   sll_halen, sll_ifindex.  The other fields should  be 0.
-	// In this case, sll_family is taken care of automatically by syscall
+	//   sll_halen, sll_ifindex, and sll_protocol. The other fields should 
+	//   be 0.
+	// In this case, sll_family is taken care of automatically by syscall.
 	err := p.s.Sendto(b, 0, &syscall.SockaddrLinklayer{
-		Ifindex: p.ifi.Index,
-		Halen:   uint8(len(a.HardwareAddr)),
-		Addr:    baddr,
+		Ifindex:  p.ifi.Index,
+		Halen:    uint8(len(a.HardwareAddr)),
+		Addr:     baddr,
+		Protocol: p.pbe,
 	})
 	return len(b), err
 }
