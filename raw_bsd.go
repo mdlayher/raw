@@ -63,8 +63,9 @@ type packetConn struct {
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
-func listenPacket(ifi *net.Interface, proto uint16, _ *Config) (*packetConn, error) {
+func listenPacket(ifi *net.Interface, proto uint16, _ Config) (*packetConn, error) {
 	// Config is, as of now, unused on BSD.
+	// TODO(mdlayher): consider porting NoTimeouts option to BSD if it pans out.
 
 	var f *os.File
 	var err error

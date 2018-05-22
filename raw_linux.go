@@ -26,7 +26,10 @@ type packetConn struct {
 	s   socket
 	pbe uint16
 
-	// Timeouts set via Set{Read,}Deadline, guarded by mutex
+	// Should timeouts be set at all?
+	noTimeouts bool
+
+	// Timeouts set via Set{Read,}Deadline, guarded by mutex.
 	timeoutMu sync.RWMutex
 	rtimeout  time.Time
 }
@@ -45,13 +48,13 @@ type socket interface {
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
-func listenPacket(ifi *net.Interface, proto uint16, cfg *Config) (*packetConn, error) {
+func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, error) {
 	// Convert proto to big endian.
 	pbe := htons(proto)
 
 	// Enabling overriding the socket type via config.
 	typ := syscall.SOCK_RAW
-	if cfg != nil && cfg.LinuxSockDGRAM {
+	if cfg.LinuxSockDGRAM {
 		typ = syscall.SOCK_DGRAM
 	}
 
@@ -62,13 +65,13 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg *Config) (*packetConn, e
 	}
 
 	// Wrap raw socket in socket interface.
-	return newPacketConn(
-		ifi,
-		&sysSocket{
-			fd: sock,
-		},
-		pbe,
-	)
+	pc, err := newPacketConn(ifi, &sysSocket{fd: sock}, pbe)
+	if err != nil {
+		return nil, err
+	}
+
+	pc.noTimeouts = cfg.NoTimeouts
+	return pc, nil
 }
 
 // newPacketConn creates a net.PacketConn using the specified network
@@ -84,12 +87,15 @@ func newPacketConn(ifi *net.Interface, s socket, pbe uint16) (*packetConn, error
 		Protocol: pbe,
 		Ifindex:  ifi.Index,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &packetConn{
 		ifi: ifi,
 		s:   s,
 		pbe: pbe,
-	}, err
+	}, nil
 }
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.
@@ -98,52 +104,56 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	deadline := p.rtimeout
 	p.timeoutMu.Unlock()
 
-	// Information returned by syscall.Recvfrom
-	var n int
-	var addr syscall.Sockaddr
+	var (
+		// Information returned by syscall.Recvfrom.
+		n    int
+		addr syscall.Sockaddr
+		err  error
+
+		// Timeout for a single loop iteration.
+		timeout = readTimeout
+	)
 
 	for {
-		var timeout time.Duration
-
-		if deadline.IsZero() {
-			timeout = readTimeout
-		} else {
+		if !deadline.IsZero() {
 			timeout = deadline.Sub(time.Now())
 			if timeout > readTimeout {
 				timeout = readTimeout
 			}
 		}
 
-		err := p.s.SetTimeout(timeout)
-		if err != nil {
-			return 0, nil, err
+		// Set a timeout for this iteration if configured to do so.
+		if !p.noTimeouts {
+			if err := p.s.SetTimeout(timeout); err != nil {
+				return 0, nil, err
+			}
 		}
 
 		// Attempt to receive on socket
 		// The recvfrom sycall will NOT be interrupted by closing of the socket
 		n, addr, err = p.s.Recvfrom(b, 0)
-
-		if err == syscall.EAGAIN {
-			// timeout
+		switch err {
+		case nil:
+			// Got data, break this loop shortly.
+		case syscall.EAGAIN:
+			// Hit a timeout, keep looping.
 			continue
-		}
-		if err != nil {
-			n = 0
-			// Return on error
+		default:
+			// Return on any other error.
 			return n, nil, err
 		}
 
-		// Got data, exit the loop
+		// Got data, exit the loop.
 		break
 	}
 
-	// Retrieve hardware address and other information from addr
+	// Retrieve hardware address and other information from addr.
 	sa, ok := addr.(*syscall.SockaddrLinklayer)
 	if !ok || sa.Halen < 6 {
 		return n, nil, syscall.EINVAL
 	}
 
-	// Use length specified to convert byte array into a hardware address slice
+	// Use length specified to convert byte array into a hardware address slice.
 	mac := make(net.HardwareAddr, sa.Halen)
 	copy(mac, sa.Addr[:])
 
@@ -159,20 +169,20 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 
 // WriteTo implements the net.PacketConn.WriteTo method.
 func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	// Ensure correct Addr type
+	// Ensure correct Addr type.
 	a, ok := addr.(*Addr)
 	if !ok || a.HardwareAddr == nil || len(a.HardwareAddr) < 6 {
 		return 0, syscall.EINVAL
 	}
 
-	// Convert hardware address back to byte array form
+	// Convert hardware address back to byte array form.
 	var baddr [8]byte
 	copy(baddr[:], a.HardwareAddr)
 
 	// Send message on socket to the specified hardware address from addr
 	// packet(7):
 	//   When you send packets it is enough to specify sll_family, sll_addr,
-	//   sll_halen, sll_ifindex, and sll_protocol. The other fields should 
+	//   sll_halen, sll_ifindex, and sll_protocol. The other fields should
 	//   be 0.
 	// In this case, sll_family is taken care of automatically by syscall.
 	err := p.s.Sendto(b, 0, &syscall.SockaddrLinklayer{
@@ -195,10 +205,6 @@ func (p *packetConn) LocalAddr() net.Addr {
 		HardwareAddr: p.ifi.HardwareAddr,
 	}
 }
-
-// TODO(mdlayher): it is unfortunate that we have to implement deadlines using
-// a context, but it appears that there may not be a better solution until
-// Go 1.6 or later.  See here: https://github.com/golang/go/issues/10565.
 
 // SetDeadline implements the net.PacketConn.SetDeadline method.
 func (p *packetConn) SetDeadline(t time.Time) error {
