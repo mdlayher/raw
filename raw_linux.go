@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -28,6 +29,12 @@ type packetConn struct {
 
 	// Should timeouts be set at all?
 	noTimeouts bool
+
+	// Should stats be accumulated instead of reset on each call?
+	noCumulativeStats bool
+
+	// Internal storage for cumulative stats.
+	stats Stats
 
 	// Timeouts set via Set{Read,}Deadline, guarded by mutex.
 	timeoutMu sync.RWMutex
@@ -72,6 +79,7 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 	}
 
 	pc.noTimeouts = cfg.NoTimeouts
+	pc.noCumulativeStats = cfg.NoCumulativeStats
 	return pc, nil
 }
 
@@ -268,10 +276,29 @@ func (p *packetConn) Stats() (*Stats, error) {
 		return nil, err
 	}
 
+	return p.handleStats(s), nil
+}
+
+// handleStats handles creation of Stats structures from raw packet socket stats.
+func (p *packetConn) handleStats(s unix.TpacketStats) *Stats {
+	// Does the caller want instantaneous stats as provided by Linux?  If so,
+	// return the structure directly.
+	if p.noCumulativeStats {
+		return &Stats{
+			Packets: uint64(s.Packets),
+			Drops:   uint64(s.Drops),
+		}
+	}
+
+	// The caller wants cumulative stats.  Add stats with the internal stats
+	// structure and return a copy of the resulting stats.
+	packets := atomic.AddUint64(&p.stats.Packets, uint64(s.Packets))
+	drops := atomic.AddUint64(&p.stats.Drops, uint64(s.Drops))
+
 	return &Stats{
-		Packets: int(s.Packets),
-		Drops:   int(s.Drops),
-	}, nil
+		Packets: packets,
+		Drops:   drops,
+	}
 }
 
 // sysSocket is the default socket implementation.  It makes use of
