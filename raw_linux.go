@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -29,6 +30,12 @@ type packetConn struct {
 	// Should timeouts be set at all?
 	noTimeouts bool
 
+	// Should stats be accumulated instead of reset on each call?
+	noCumulativeStats bool
+
+	// Internal storage for cumulative stats.
+	stats Stats
+
 	// Timeouts set via Set{Read,}Deadline, guarded by mutex.
 	timeoutMu sync.RWMutex
 	rtimeout  time.Time
@@ -40,6 +47,7 @@ type socket interface {
 	Bind(syscall.Sockaddr) error
 	Close() error
 	FD() int
+	GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error
 	Recvfrom([]byte, int) (int, syscall.Sockaddr, error)
 	Sendto([]byte, int, syscall.Sockaddr) error
 	SetSockopt(level, name int, v unsafe.Pointer, l uint32) error
@@ -71,6 +79,7 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 	}
 
 	pc.noTimeouts = cfg.NoTimeouts
+	pc.noCumulativeStats = cfg.NoCumulativeStats
 	return pc, nil
 }
 
@@ -260,6 +269,38 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
+// Stats retrieves statistics from the Conn.
+func (p *packetConn) Stats() (*Stats, error) {
+	var s unix.TpacketStats
+	if err := p.s.GetSockopt(unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&s), unsafe.Sizeof(s)); err != nil {
+		return nil, err
+	}
+
+	return p.handleStats(s), nil
+}
+
+// handleStats handles creation of Stats structures from raw packet socket stats.
+func (p *packetConn) handleStats(s unix.TpacketStats) *Stats {
+	// Does the caller want instantaneous stats as provided by Linux?  If so,
+	// return the structure directly.
+	if p.noCumulativeStats {
+		return &Stats{
+			Packets: uint64(s.Packets),
+			Drops:   uint64(s.Drops),
+		}
+	}
+
+	// The caller wants cumulative stats.  Add stats with the internal stats
+	// structure and return a copy of the resulting stats.
+	packets := atomic.AddUint64(&p.stats.Packets, uint64(s.Packets))
+	drops := atomic.AddUint64(&p.stats.Drops, uint64(s.Drops))
+
+	return &Stats{
+		Packets: packets,
+		Drops:   drops,
+	}
+}
+
 // sysSocket is the default socket implementation.  It makes use of
 // Linux-specific system calls to handle raw socket functionality.
 type sysSocket struct {
@@ -271,6 +312,13 @@ type sysSocket struct {
 func (s *sysSocket) Bind(sa syscall.Sockaddr) error { return syscall.Bind(s.fd, sa) }
 func (s *sysSocket) Close() error                   { return syscall.Close(s.fd) }
 func (s *sysSocket) FD() int                        { return s.fd }
+func (s *sysSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error {
+	_, _, err := syscall.Syscall6(syscall.SYS_GETSOCKOPT, uintptr(s.fd), uintptr(level), uintptr(name), uintptr(v), uintptr(unsafe.Pointer(&l)), 0)
+	if err != 0 {
+		return syscall.Errno(err)
+	}
+	return nil
+}
 func (s *sysSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
 	return syscall.Recvfrom(s.fd, p, flags)
 }
