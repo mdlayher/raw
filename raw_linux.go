@@ -40,6 +40,7 @@ type socket interface {
 	Bind(syscall.Sockaddr) error
 	Close() error
 	FD() int
+	GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error
 	Recvfrom([]byte, int) (int, syscall.Sockaddr, error)
 	Sendto([]byte, int, syscall.Sockaddr) error
 	SetSockopt(level, name int, v unsafe.Pointer, l uint32) error
@@ -260,6 +261,19 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
+// Stats retrieves statistics from the Conn.
+func (p *packetConn) Stats() (*Stats, error) {
+	var s unix.TpacketStats
+	if err := p.s.GetSockopt(unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&s), unsafe.Sizeof(s)); err != nil {
+		return nil, err
+	}
+
+	return &Stats{
+		Packets: int(s.Packets),
+		Drops:   int(s.Drops),
+	}, nil
+}
+
 // sysSocket is the default socket implementation.  It makes use of
 // Linux-specific system calls to handle raw socket functionality.
 type sysSocket struct {
@@ -271,6 +285,13 @@ type sysSocket struct {
 func (s *sysSocket) Bind(sa syscall.Sockaddr) error { return syscall.Bind(s.fd, sa) }
 func (s *sysSocket) Close() error                   { return syscall.Close(s.fd) }
 func (s *sysSocket) FD() int                        { return s.fd }
+func (s *sysSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error {
+	_, _, err := syscall.Syscall6(syscall.SYS_GETSOCKOPT, uintptr(s.fd), uintptr(level), uintptr(name), uintptr(v), uintptr(unsafe.Pointer(&l)), 0)
+	if err != 0 {
+		return syscall.Errno(err)
+	}
+	return nil
+}
 func (s *sysSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
 	return syscall.Recvfrom(s.fd, p, flags)
 }

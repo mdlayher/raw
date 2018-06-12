@@ -389,10 +389,11 @@ func Test_packetConnNoTimeouts(t *testing.T) {
 // the basis for more specific socket implementations.
 type noopSocket struct{}
 
-func (noopSocket) Bind(sa syscall.Sockaddr) error                               { return nil }
-func (noopSocket) Close() error                                                 { return nil }
-func (noopSocket) FD() int                                                      { return 0 }
-func (noopSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error)  { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error        { return nil }
-func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error { return nil }
-func (noopSocket) SetTimeout(timeout time.Duration) error                       { return nil }
+func (noopSocket) Bind(sa syscall.Sockaddr) error                                { return nil }
+func (noopSocket) Close() error                                                  { return nil }
+func (noopSocket) FD() int                                                       { return 0 }
+func (noopSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error { return nil }
+func (noopSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error)   { return 0, nil, nil }
+func (noopSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error         { return nil }
+func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error  { return nil }
+func (noopSocket) SetTimeout(timeout time.Duration) error                        { return nil }

@@ -220,13 +220,17 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
 // to receive traffic that is not addressed to the interface.
 func (p *packetConn) SetPromiscuous(b bool) error {
-
 	m := 1
 	if !b {
 		m = 0
 	}
 
 	return syscall.SetBpfPromisc(p.fd, m)
+}
+
+// Stats retrieves statistics from the Conn.
+func (p *packetConn) Stats() (*Stats, error) {
+	return nil, ErrNotImplemented
 }
 
 // configureBPF configures a BPF device with the specified file descriptor to

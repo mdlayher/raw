@@ -98,6 +98,22 @@ func (c *Conn) SetPromiscuous(b bool) error {
 	return c.p.SetPromiscuous(b)
 }
 
+// Stats contains statistics about a Conn.
+type Stats struct {
+	// The total number of packets received.
+	Packets int
+
+	// The number of packets dropped.
+	Drops int
+}
+
+// Stats retrieves statistics from the Conn.
+//
+// Only supported on Linux at this time.
+func (c *Conn) Stats() (*Stats, error) {
+	return c.p.Stats()
+}
+
 // ListenPacket creates a net.PacketConn which can be used to send and receive
 // data at the network interface device driver level.
 //
