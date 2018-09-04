@@ -1,6 +1,6 @@
 language: go
 go:
-  - "1.x.x"
+  - "1.x"
 os:
   - linux
   - osx
