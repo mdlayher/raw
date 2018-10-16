@@ -5,7 +5,6 @@ package raw
 import (
 	"bytes"
 	"net"
-	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -18,11 +17,11 @@ import (
 // Test to ensure that socket is bound with correct sockaddr_ll information
 
 type bindSocket struct {
-	bind syscall.Sockaddr
+	bind unix.Sockaddr
 	noopSocket
 }
 
-func (s *bindSocket) Bind(sa syscall.Sockaddr) error {
+func (s *bindSocket) Bind(sa unix.Sockaddr) error {
 	s.bind = sa
 	return nil
 }
@@ -44,7 +43,7 @@ func Test_newPacketConnBind(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sall, ok := s.bind.(*syscall.SockaddrLinklayer)
+	sall, ok := s.bind.(*unix.SockaddrLinklayer)
 	if !ok {
 		t.Fatalf("bind sockaddr has incorrect type: %T", s.bind)
 	}
@@ -60,11 +59,11 @@ func Test_newPacketConnBind(t *testing.T) {
 // Test for incorrect sockaddr type after recvfrom on a socket.
 
 type addrRecvfromSocket struct {
-	addr syscall.Sockaddr
+	addr unix.Sockaddr
 	noopSocket
 }
 
-func (s *addrRecvfromSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
+func (s *addrRecvfromSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error) {
 	return 0, s.addr, nil
 }
 
@@ -72,7 +71,7 @@ func Test_packetConnReadFromRecvfromInvalidSockaddr(t *testing.T) {
 	p, err := newPacketConn(
 		&net.Interface{},
 		&addrRecvfromSocket{
-			addr: &syscall.SockaddrInet4{},
+			addr: &unix.SockaddrInet4{},
 		},
 		0,
 	)
@@ -81,7 +80,7 @@ func Test_packetConnReadFromRecvfromInvalidSockaddr(t *testing.T) {
 	}
 
 	_, _, err = p.ReadFrom(nil)
-	if want, got := syscall.EINVAL, err; want != got {
+	if want, got := unix.EINVAL, err; want != got {
 		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 	}
 }
@@ -92,7 +91,7 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 	p, err := newPacketConn(
 		&net.Interface{},
 		&addrRecvfromSocket{
-			addr: &syscall.SockaddrLinklayer{
+			addr: &unix.SockaddrLinklayer{
 				Halen: 5,
 			},
 		},
@@ -103,7 +102,7 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 	}
 
 	_, _, err = p.ReadFrom(nil)
-	if want, got := syscall.EINVAL, err; want != got {
+	if want, got := unix.EINVAL, err; want != got {
 		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 	}
 }
@@ -113,11 +112,11 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 type recvfromSocket struct {
 	p     []byte
 	flags int
-	addr  syscall.Sockaddr
+	addr  unix.Sockaddr
 	noopSocket
 }
 
-func (s *recvfromSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
+func (s *recvfromSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error) {
 	copy(p, s.p)
 	s.flags = flags
 	return len(s.p), s.addr, nil
@@ -130,7 +129,7 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 
 	s := &recvfromSocket{
 		p: data,
-		addr: &syscall.SockaddrLinklayer{
+		addr: &unix.SockaddrLinklayer{
 			Halen: 6,
 			Addr:  [8]byte{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0x00, 0x00},
 		},
@@ -176,7 +175,7 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 
 func Test_packetConnWriteToInvalidSockaddr(t *testing.T) {
 	_, err := (&packetConn{}).WriteTo(nil, &net.IPAddr{})
-	if want, got := syscall.EINVAL, err; want != got {
+	if want, got := unix.EINVAL, err; want != got {
 		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 	}
 }
@@ -195,7 +194,7 @@ func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
 		_, err := (&packetConn{}).WriteTo(nil, &Addr{
 			HardwareAddr: addr,
 		})
-		if want, got := syscall.EINVAL, err; want != got {
+		if want, got := unix.EINVAL, err; want != got {
 			t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
 		}
 	}
@@ -206,11 +205,11 @@ func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
 type sendtoSocket struct {
 	p     []byte
 	flags int
-	addr  syscall.Sockaddr
+	addr  unix.Sockaddr
 	noopSocket
 }
 
-func (s *sendtoSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error {
+func (s *sendtoSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error {
 	copy(s.p, p)
 	s.flags = flags
 	s.addr = to
@@ -254,7 +253,7 @@ func Test_packetConnWriteToSendtoOK(t *testing.T) {
 		t.Fatalf("unexpected data:\n- want: %v\n-  got: %v", want, got)
 	}
 
-	sall, ok := s.addr.(*syscall.SockaddrLinklayer)
+	sall, ok := s.addr.(*unix.SockaddrLinklayer)
 	if !ok {
 		t.Fatalf("write sockaddr has incorrect type: %T", s.addr)
 	}
@@ -330,10 +329,10 @@ func Test_packetConnSetBPF(t *testing.T) {
 	fn := func(level, name int, _ unsafe.Pointer, _ uint32) error {
 		// Though we can't check the filter itself, we can check the setsockopt
 		// level and name for correctness.
-		if want, got := syscall.SOL_SOCKET, level; want != got {
+		if want, got := unix.SOL_SOCKET, level; want != got {
 			t.Fatalf("unexpected setsockopt level:\n- want: %v\n-  got: %v", want, got)
 		}
-		if want, got := syscall.SO_ATTACH_FILTER, name; want != got {
+		if want, got := unix.SO_ATTACH_FILTER, name; want != got {
 			t.Fatalf("unexpected setsockopt name:\n- want: %v\n-  got: %v", want, got)
 		}
 
@@ -359,8 +358,8 @@ type setTimeoutSocket struct {
 	noopSocket
 }
 
-func (s *setTimeoutSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error) {
-	return 0, &syscall.SockaddrLinklayer{
+func (s *setTimeoutSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error) {
+	return 0, &unix.SockaddrLinklayer{
 		Halen: 6,
 	}, nil
 }
@@ -445,11 +444,11 @@ func Test_packetConn_handleStats(t *testing.T) {
 // the basis for more specific socket implementations.
 type noopSocket struct{}
 
-func (noopSocket) Bind(sa syscall.Sockaddr) error                                { return nil }
+func (noopSocket) Bind(sa unix.Sockaddr) error                                   { return nil }
 func (noopSocket) Close() error                                                  { return nil }
 func (noopSocket) FD() int                                                       { return 0 }
 func (noopSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error { return nil }
-func (noopSocket) Recvfrom(p []byte, flags int) (int, syscall.Sockaddr, error)   { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to syscall.Sockaddr) error         { return nil }
+func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)      { return 0, nil, nil }
+func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error            { return nil }
 func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error  { return nil }
 func (noopSocket) SetTimeout(timeout time.Duration) error                        { return nil }
