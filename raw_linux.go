@@ -3,6 +3,7 @@
 package raw
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -38,6 +39,9 @@ type packetConn struct {
 	// Timeouts set via Set{Read,}Deadline, guarded by mutex.
 	timeoutMu sync.RWMutex
 	rtimeout  time.Time
+
+	// Multicast link local addresses this socket has added
+	mcastGroups map[string]net.HardwareAddr
 }
 
 // socket is an interface which enables swapping out socket syscalls for
@@ -79,6 +83,7 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 
 	pc.noTimeouts = cfg.NoTimeouts
 	pc.noCumulativeStats = cfg.NoCumulativeStats
+	pc.mcastGroups = make(map[string]net.HardwareAddr)
 	return pc, nil
 }
 
@@ -184,8 +189,10 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	}
 
 	// Convert hardware address back to byte array form.
-	var baddr [8]byte
-	copy(baddr[:], a.HardwareAddr)
+	baddr, err := rawHardwareAddr(a.HardwareAddr)
+	if err != nil {
+		return 0, err
+	}
 
 	// Send message on socket to the specified hardware address from addr
 	// packet(7):
@@ -193,7 +200,7 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	//   sll_halen, sll_ifindex, and sll_protocol. The other fields should
 	//   be 0.
 	// In this case, sll_family is taken care of automatically by unix.
-	err := p.s.Sendto(b, 0, &unix.SockaddrLinklayer{
+	err = p.s.Sendto(b, 0, &unix.SockaddrLinklayer{
 		Ifindex:  p.ifi.Index,
 		Halen:    uint8(len(a.HardwareAddr)),
 		Addr:     baddr,
@@ -204,6 +211,9 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 
 // Close closes the connection.
 func (p *packetConn) Close() error {
+	for _, hwaddr := range p.mcastGroups {
+		_ = p.SetHwMulticast(false, hwaddr)
+	}
 	return p.s.Close()
 }
 
@@ -266,6 +276,33 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	}
 
 	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
+}
+
+// SetHwMulticast adds or removes the given link layer multicast address
+// to the interface
+func (p *packetConn) SetHwMulticast(add bool, addr net.HardwareAddr) error {
+	baddr, err := rawHardwareAddr(addr)
+	if err != nil {
+		return err
+	}
+
+	mreq := unix.PacketMreq{
+		Ifindex: int32(p.ifi.Index),
+		Type:    unix.PACKET_MR_MULTICAST,
+		Alen:    uint16(len(addr)),
+		Address: baddr,
+	}
+
+	var action int
+	if add {
+		action = unix.PACKET_ADD_MEMBERSHIP
+		p.mcastGroups[addr.String()] = addr
+	} else {
+		action = unix.PACKET_DROP_MEMBERSHIP
+		delete(p.mcastGroups, addr.String())
+	}
+
+	return p.s.SetSockopt(unix.SOL_PACKET, action, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
 // Stats retrieves statistics from the Conn.
@@ -337,4 +374,13 @@ func (s *sysSocket) SetTimeout(timeout time.Duration) error {
 		return err
 	}
 	return unix.SetsockoptTimeval(s.fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, tv)
+}
+
+func rawHardwareAddr(addr net.HardwareAddr) (baddr [8]byte, err error) {
+	if len(addr) > 8 {
+		return baddr, fmt.Errorf("hwaddr '%s' is lager than 8 byte", addr)
+	}
+
+	copy(baddr[:], addr)
+	return baddr, err
 }

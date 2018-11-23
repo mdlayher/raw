@@ -228,6 +228,12 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return syscall.SetBpfPromisc(p.fd, m)
 }
 
+// SetHwMulticast adds or removes the given link layer multicast address
+// to the interface
+func (p *packetConn) SetHwMulticast(add bool, addr net.HardwareAddr) error {
+	return ErrNotImplemented
+}
+
 // Stats retrieves statistics from the Conn.
 func (p *packetConn) Stats() (*Stats, error) {
 	return nil, ErrNotImplemented

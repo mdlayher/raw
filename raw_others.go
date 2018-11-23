@@ -67,6 +67,12 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return ErrNotImplemented
 }
 
+// SetHwMulticast adds or drops the given link layer multicast address
+// to the interface
+func (p *packetConn) SetHwMulticast(add bool, addr net.HardwareAddr) error {
+	return ErrNotImplemented
+}
+
 // Stats is not currently implemented on this platform.
 func (p *packetConn) Stats() (*Stats, error) {
 	return nil, ErrNotImplemented
