@@ -228,9 +228,9 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return syscall.SetBpfPromisc(p.fd, m)
 }
 
-// SetHwMulticast adds or removes the given link layer multicast address
+// setHwMulticast adds or removes the given link layer multicast address
 // to the interface
-func (p *packetConn) SetHwMulticast(add bool, addr net.HardwareAddr) error {
+func (p *packetConn) setHwMulticast(add bool, addr net.HardwareAddr) error {
 	return ErrNotImplemented
 }
 

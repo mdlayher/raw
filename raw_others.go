@@ -67,9 +67,9 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return ErrNotImplemented
 }
 
-// SetHwMulticast adds or drops the given link layer multicast address
+// setHwMulticast adds or drops the given link layer multicast address
 // to the interface
-func (p *packetConn) SetHwMulticast(add bool, addr net.HardwareAddr) error {
+func (p *packetConn) setHwMulticast(add bool, addr net.HardwareAddr) error {
 	return ErrNotImplemented
 }
 

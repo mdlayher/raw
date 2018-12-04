@@ -212,7 +212,7 @@ func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 // Close closes the connection.
 func (p *packetConn) Close() error {
 	for _, hwaddr := range p.mcastGroups {
-		_ = p.SetHwMulticast(false, hwaddr)
+		_ = p.setHwMulticast(false, hwaddr)
 	}
 	return p.s.Close()
 }
@@ -278,9 +278,9 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
 }
 
-// SetHwMulticast adds or removes the given link layer multicast address
+// setHwMulticast adds or removes the given link layer multicast address
 // to the interface
-func (p *packetConn) SetHwMulticast(add bool, addr net.HardwareAddr) error {
+func (p *packetConn) setHwMulticast(add bool, addr net.HardwareAddr) error {
 	baddr, err := rawHardwareAddr(addr)
 	if err != nil {
 		return err

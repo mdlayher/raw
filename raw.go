@@ -101,13 +101,13 @@ func (c *Conn) SetPromiscuous(b bool) error {
 // JoinHwMulticast adds the link layer multicast address to the
 // interface allowing it to receive multicast traffic.
 func (c *Conn) JoinHwMulticast(addr net.HardwareAddr) error {
-	return c.p.SetHwMulticast(true, addr)
+	return c.p.setHwMulticast(true, addr)
 }
 
 // PartHwMulticast drops the link layer multicast address from the
 // interface, stopping it from receiving further multicast traffic.
 func (c *Conn) PartHwMulticast(addr net.HardwareAddr) error {
-	return c.p.SetHwMulticast(false, addr)
+	return c.p.setHwMulticast(false, addr)
 }
 
 // Stats contains statistics about a Conn.
