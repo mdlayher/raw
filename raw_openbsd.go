@@ -1,5 +1,3 @@
-// +build darwin dragonfly freebsd netbsd
-
 package raw
 
 import (
@@ -7,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -19,10 +16,7 @@ import (
 const (
 	// bpfDIn tells BPF to pass through only incoming packets, so we do not
 	// receive the packets we send using BPF.
-	bpfDIn = 0
-
-	// osFreeBSD is the GOOS name for FreeBSD.
-	osFreeBSD = "freebsd"
+	bpfDIn = 2 // (1 << 1) in net/bpf.h
 )
 
 // bpfLen returns the length of the BPF header prepended to each incoming ethernet
@@ -34,11 +28,6 @@ func bpfLen() int {
 		bpfHeaderLen  = 18
 		bpfXHeaderLen = 26
 	)
-
-	if runtime.GOOS == osFreeBSD {
-		return bpfXHeaderLen
-	}
-
 	return bpfHeaderLen
 }
 
@@ -287,9 +276,10 @@ func setBPFDirection(fd int, direction int) error {
 	_, _, err := syscall.Syscall(
 		syscall.SYS_IOCTL,
 		uintptr(fd),
-		// Even though BIOCSDIRECTION is preferred on FreeBSD, BIOCSSEESENT continues
-		// to work, and is required for other BSD platforms
-		syscall.BIOCSSEESENT,
+		// OpenBSD has deprecated and removed BIOCSSEESENT
+		// The same functionality can be obtained by using
+		// the BIOCSDIRFILT ioctl.
+		syscall.BIOCSDIRFILT,
 		uintptr(unsafe.Pointer(&direction)),
 	)
 	if err != 0 {
