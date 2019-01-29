@@ -16,6 +16,11 @@ import (
 	"golang.org/x/net/bpf"
 )
 
+const (
+	// osFreeBSD is the GOOS name for FreeBSD.
+	osFreeBSD = "freebsd"
+)
+
 // bpfLen returns the length of the BPF header prepended to each incoming ethernet
 // frame.  FreeBSD uses a slightly modified header from other BSD variants.
 func bpfLen() int {
