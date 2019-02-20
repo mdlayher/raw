@@ -128,7 +128,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		if deadline.IsZero() {
 			timeout = readTimeout
 		} else {
-			timeout = deadline.Sub(time.Now())
+			timeout = time.Until(deadline)
 			if timeout > readTimeout {
 				timeout = readTimeout
 			}
