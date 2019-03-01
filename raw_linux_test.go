@@ -351,41 +351,6 @@ func Test_packetConnSetBPF(t *testing.T) {
 	}
 }
 
-// Test that timeouts are not set when they are disabled.
-
-type setTimeoutSocket struct {
-	setTimeout func(timeout time.Duration) error
-	noopSocket
-}
-
-func (s *setTimeoutSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error) {
-	return 0, &unix.SockaddrLinklayer{
-		Halen: 6,
-	}, nil
-}
-
-func (s *setTimeoutSocket) SetTimeout(timeout time.Duration) error {
-	return s.setTimeout(timeout)
-}
-
-func Test_packetConnNoTimeouts(t *testing.T) {
-	s := &setTimeoutSocket{
-		setTimeout: func(_ time.Duration) error {
-			panic("a timeout was set")
-		},
-	}
-
-	p := &packetConn{
-		s:          s,
-		noTimeouts: true,
-	}
-
-	buf := make([]byte, 64)
-	if _, _, err := p.ReadFrom(buf); err != nil {
-		t.Fatalf("failed to read: %v", err)
-	}
-}
-
 func Test_packetConn_handleStats(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -446,9 +411,10 @@ type noopSocket struct{}
 
 func (noopSocket) Bind(sa unix.Sockaddr) error                                   { return nil }
 func (noopSocket) Close() error                                                  { return nil }
-func (noopSocket) FD() int                                                       { return 0 }
 func (noopSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error { return nil }
 func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)      { return 0, nil, nil }
 func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error            { return nil }
 func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error  { return nil }
-func (noopSocket) SetTimeout(timeout time.Duration) error                        { return nil }
+func (noopSocket) SetDeadline(timeout time.Time) error                           { return nil }
+func (noopSocket) SetReadDeadline(timeout time.Time) error                       { return nil }
+func (noopSocket) SetWriteDeadline(timeout time.Time) error                      { return nil }
