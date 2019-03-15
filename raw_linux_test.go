@@ -7,7 +7,6 @@ import (
 	"net"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/net/bpf"
@@ -310,12 +309,12 @@ func Test_packetConnLocalAddr(t *testing.T) {
 // Test that BPF filter attachment works as intended.
 
 type setSockoptSocket struct {
-	setsockopt func(level, name int, v unsafe.Pointer, l uint32) error
+	setsockoptSockFprog func(level, name int, fprog *unix.SockFprog) error
 	noopSocket
 }
 
-func (s *setSockoptSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
-	return s.setsockopt(level, name, v, l)
+func (s *setSockoptSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error {
+	return s.setsockoptSockFprog(level, name, fprog)
 }
 
 func Test_packetConnSetBPF(t *testing.T) {
@@ -326,7 +325,7 @@ func Test_packetConnSetBPF(t *testing.T) {
 		t.Fatalf("failed to assemble filter: %v", err)
 	}
 
-	fn := func(level, name int, _ unsafe.Pointer, _ uint32) error {
+	fn := func(level, name int, _ *unix.SockFprog) error {
 		// Though we can't check the filter itself, we can check the setsockopt
 		// level and name for correctness.
 		if want, got := unix.SOL_SOCKET, level; want != got {
@@ -340,7 +339,7 @@ func Test_packetConnSetBPF(t *testing.T) {
 	}
 
 	s := &setSockoptSocket{
-		setsockopt: fn,
+		setsockoptSockFprog: fn,
 	}
 	p := &packetConn{
 		s: s,
@@ -394,7 +393,7 @@ func Test_packetConn_handleStats(t *testing.T) {
 			}
 
 			for i := 0; i < len(tt.stats); i++ {
-				out := *p.handleStats(tt.stats[i])
+				out := *p.handleStats(&tt.stats[i])
 
 				if diff := cmp.Diff(tt.out[i], out); diff != "" {
 					t.Fatalf("unexpected Stats[%02d] (-want +got):\n%s", i, diff)
@@ -409,12 +408,13 @@ func Test_packetConn_handleStats(t *testing.T) {
 // the basis for more specific socket implementations.
 type noopSocket struct{}
 
-func (noopSocket) Bind(sa unix.Sockaddr) error                                   { return nil }
-func (noopSocket) Close() error                                                  { return nil }
-func (noopSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error { return nil }
-func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)      { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error            { return nil }
-func (noopSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error  { return nil }
-func (noopSocket) SetDeadline(timeout time.Time) error                           { return nil }
-func (noopSocket) SetReadDeadline(timeout time.Time) error                       { return nil }
-func (noopSocket) SetWriteDeadline(timeout time.Time) error                      { return nil }
+func (noopSocket) Bind(sa unix.Sockaddr) error                                        { return nil }
+func (noopSocket) Close() error                                                       { return nil }
+func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) { return nil, nil }
+func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)           { return 0, nil, nil }
+func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                 { return nil }
+func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error  { return nil }
+func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error   { return nil }
+func (noopSocket) SetDeadline(timeout time.Time) error                                { return nil }
+func (noopSocket) SetReadDeadline(timeout time.Time) error                            { return nil }
+func (noopSocket) SetWriteDeadline(timeout time.Time) error                           { return nil }
