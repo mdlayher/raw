@@ -38,10 +38,11 @@ type packetConn struct {
 type socket interface {
 	Bind(unix.Sockaddr) error
 	Close() error
-	GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error
+	GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error)
 	Recvfrom([]byte, int) (int, unix.Sockaddr, error)
 	Sendto([]byte, int, unix.Sockaddr) error
-	SetSockopt(level, name int, v unsafe.Pointer, l uint32) error
+	SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error
+	SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error
 	SetDeadline(time.Time) error
 	SetReadDeadline(time.Time) error
 	SetWriteDeadline(time.Time) error
@@ -213,11 +214,10 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 		Filter: (*unix.SockFilter)(unsafe.Pointer(&filter[0])),
 	}
 
-	err := p.s.SetSockopt(
+	err := p.s.SetSockoptSockFprog(
 		unix.SOL_SOCKET,
 		unix.SO_ATTACH_FILTER,
-		unsafe.Pointer(&prog),
-		uint32(unsafe.Sizeof(prog)),
+		&prog,
 	)
 	if err != nil {
 		return os.NewSyscallError("setsockopt", err)
@@ -238,21 +238,21 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 		membership = unix.PACKET_DROP_MEMBERSHIP
 	}
 
-	return p.s.SetSockopt(unix.SOL_PACKET, membership, unsafe.Pointer(&mreq), unix.SizeofPacketMreq)
+	return p.s.SetSockoptPacketMreq(unix.SOL_PACKET, membership, &mreq)
 }
 
 // Stats retrieves statistics from the Conn.
 func (p *packetConn) Stats() (*Stats, error) {
-	var s unix.TpacketStats
-	if err := p.s.GetSockopt(unix.SOL_PACKET, unix.PACKET_STATISTICS, unsafe.Pointer(&s), unsafe.Sizeof(s)); err != nil {
+	stats, err := p.s.GetSockoptTpacketStats(unix.SOL_PACKET, unix.PACKET_STATISTICS)
+	if err != nil {
 		return nil, err
 	}
 
-	return p.handleStats(s), nil
+	return p.handleStats(stats), nil
 }
 
 // handleStats handles creation of Stats structures from raw packet socket stats.
-func (p *packetConn) handleStats(s unix.TpacketStats) *Stats {
+func (p *packetConn) handleStats(s *unix.TpacketStats) *Stats {
 	// Does the caller want instantaneous stats as provided by Linux?  If so,
 	// return the structure directly.
 	if p.noCumulativeStats {
@@ -307,18 +307,20 @@ func (s *sysSocket) Close() error {
 	return s.f.Close()
 }
 
-func (s *sysSocket) GetSockopt(level, name int, v unsafe.Pointer, l uintptr) error {
+func (s *sysSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) {
+	var stats *unix.TpacketStats
 	var err error
 	cerr := s.rc.Control(func(fd uintptr) {
-		_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT, fd, uintptr(level), uintptr(name), uintptr(v), uintptr(unsafe.Pointer(&l)), 0)
-		if errno != 0 {
+		s, errno := unix.GetsockoptTpacketStats(int(fd), level, name)
+		stats = s
+		if errno != nil {
 			err = os.NewSyscallError("getsockopt", errno)
 		}
 	})
 	if err != nil {
-		return err
+		return stats, err
 	}
-	return cerr
+	return stats, cerr
 }
 
 func (s *sysSocket) Recvfrom(p []byte, flags int) (n int, addr unix.Sockaddr, err error) {
@@ -351,11 +353,25 @@ func (s *sysSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error {
 	return cerr
 }
 
-func (s *sysSocket) SetSockopt(level, name int, v unsafe.Pointer, l uint32) error {
+func (s *sysSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error {
 	var err error
 	cerr := s.rc.Control(func(fd uintptr) {
-		_, _, errno := unix.Syscall6(unix.SYS_SETSOCKOPT, fd, uintptr(level), uintptr(name), uintptr(v), uintptr(l), 0)
-		if errno != 0 {
+		errno := unix.SetsockoptSockFprog(int(fd), level, name, fprog)
+		if errno != nil {
+			err = os.NewSyscallError("setsockopt", errno)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	return cerr
+}
+
+func (s *sysSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error {
+	var err error
+	cerr := s.rc.Control(func(fd uintptr) {
+		errno := unix.SetsockoptPacketMreq(int(fd), level, name, mreq)
+		if errno != nil {
 			err = os.NewSyscallError("setsockopt", errno)
 		}
 	})
