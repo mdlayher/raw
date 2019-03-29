@@ -58,9 +58,6 @@ func htons(i uint16) uint16 {
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
 func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, error) {
-	// Convert proto to big endian.
-	pbe := htons(proto)
-
 	filename := "eth-packet-socket"
 	// Enabling overriding the socket type via config.
 	typ := unix.SOCK_RAW
@@ -69,8 +66,10 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 		typ = unix.SOCK_DGRAM
 	}
 
-	// Open a packet socket using specified socket and protocol types.
-	sock, err := unix.Socket(unix.AF_PACKET, typ, int(pbe))
+	// Open a packet socket using specified socket type. Do not specify
+	// a protocol to avoid capturing packets which to not match cfg.Filter.
+	// The later call to bind() will set up the correct protocol for us.
+	sock, err := unix.Socket(unix.AF_PACKET, typ, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +91,7 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 	}
 
 	// Wrap raw socket in socket interface.
-	pc, err := newPacketConn(ifi, &sysSocket{f: f, rc: sc}, pbe)
+	pc, err := newPacketConn(ifi, &sysSocket{f: f, rc: sc}, htons(proto), cfg.Filter)
 	if err != nil {
 		return nil, err
 	}
@@ -105,24 +104,33 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 // interface, wrapped socket and big endian protocol number.
 //
 // It is the entry point for tests in this package.
-func newPacketConn(ifi *net.Interface, s socket, pbe uint16) (*packetConn, error) {
+func newPacketConn(ifi *net.Interface, s socket, pbe uint16, filter []bpf.RawInstruction) (*packetConn, error) {
+	pc := &packetConn{
+		ifi: ifi,
+		s:   s,
+		pbe: pbe,
+	}
+
+	if len(filter) > 0 {
+		if err := pc.SetBPF(filter); err != nil {
+			return nil, err
+		}
+	}
+
 	// Bind the packet socket to the interface specified by ifi
 	// packet(7):
 	//   Only the sll_protocol and the sll_ifindex address fields are used for
 	//   purposes of binding.
+	// This overrides the protocol given to socket(AF_PACKET).
 	err := s.Bind(&unix.SockaddrLinklayer{
-		Protocol: pbe,
+		Protocol: pc.pbe,
 		Ifindex:  ifi.Index,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &packetConn{
-		ifi: ifi,
-		s:   s,
-		pbe: pbe,
-	}, nil
+	return pc, nil
 }
 
 // ReadFrom implements the net.PacketConn.ReadFrom method.

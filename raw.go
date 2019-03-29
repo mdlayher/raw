@@ -149,4 +149,8 @@ type Config struct {
 	// statistics internally per Conn.  To use the Linux default behavior of
 	// resetting statistics on each call to Stats, set this value to true.
 	NoCumulativeStats bool
+
+	// Linux only: initial filter to apply to the connection. This avoids
+	// capturing random packets before SetBPF is called.
+	Filter []bpf.RawInstruction
 }
