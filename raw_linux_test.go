@@ -37,6 +37,7 @@ func Test_newPacketConnBind(t *testing.T) {
 		},
 		s,
 		protocol,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -73,6 +74,7 @@ func Test_packetConnReadFromRecvfromInvalidSockaddr(t *testing.T) {
 			addr: &unix.SockaddrInet4{},
 		},
 		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +97,7 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 			},
 		},
 		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +141,7 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 		&net.Interface{},
 		s,
 		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -229,6 +233,7 @@ func Test_packetConnWriteToSendtoOK(t *testing.T) {
 		&net.Interface{},
 		s,
 		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -325,6 +330,7 @@ func Test_packetConnSetBPF(t *testing.T) {
 		t.Fatalf("failed to assemble filter: %v", err)
 	}
 
+	count := 0
 	fn := func(level, name int, _ *unix.SockFprog) error {
 		// Though we can't check the filter itself, we can check the setsockopt
 		// level and name for correctness.
@@ -335,18 +341,29 @@ func Test_packetConnSetBPF(t *testing.T) {
 			t.Fatalf("unexpected setsockopt name:\n- want: %v\n-  got: %v", want, got)
 		}
 
+		count++
 		return nil
 	}
 
 	s := &setSockoptSocket{
 		setsockoptSockFprog: fn,
 	}
-	p := &packetConn{
-		s: s,
+
+	p, err := newPacketConn(&net.Interface{}, s, 1, filter)
+	if err != nil {
+		t.Fatalf("failed to create connection with filter: %v", err)
+	}
+
+	if count != 1 {
+		t.Fatal("creating a socket with filter didn't install it")
 	}
 
 	if err := p.SetBPF(filter); err != nil {
 		t.Fatalf("failed to attach filter: %v", err)
+	}
+
+	if count != 2 {
+		t.Fatal("creating a socket with filter didn't install it")
 	}
 }
 
