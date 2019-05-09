@@ -17,9 +17,6 @@ import (
 )
 
 const (
-	// bpfDIn tells BPF to pass through only incoming packets, so we do not
-	// receive the packets we send using BPF.
-	bpfDIn = 0
 
 	// osFreeBSD is the GOOS name for FreeBSD.
 	osFreeBSD = "freebsd"
@@ -63,8 +60,7 @@ type packetConn struct {
 
 // listenPacket creates a net.PacketConn which can be used to send and receive
 // data at the device driver level.
-func listenPacket(ifi *net.Interface, proto uint16, _ Config) (*packetConn, error) {
-	// Config is, as of now, unused on BSD.
+func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, error) {
 	// TODO(mdlayher): consider porting NoTimeouts option to BSD if it pans out.
 
 	var f *os.File
@@ -99,7 +95,7 @@ func listenPacket(ifi *net.Interface, proto uint16, _ Config) (*packetConn, erro
 	}
 
 	// Configure BPF device to send and receive data
-	buflen, err := configureBPF(fd, ifi, proto)
+	buflen, err := configureBPF(fd, ifi, proto, cfg.BPFDirection)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +231,7 @@ func (p *packetConn) Stats() (*Stats, error) {
 
 // configureBPF configures a BPF device with the specified file descriptor to
 // use the specified network and interface and protocol.
-func configureBPF(fd int, ifi *net.Interface, proto uint16) (int, error) {
+func configureBPF(fd int, ifi *net.Interface, proto uint16, direction int) (int, error) {
 	// Use specified interface with BPF device
 	if err := syscall.SetBpfInterface(fd, ifi.Name); err != nil {
 		return 0, err
@@ -257,8 +253,8 @@ func configureBPF(fd int, ifi *net.Interface, proto uint16) (int, error) {
 		return 0, err
 	}
 
-	// Only retrieve incoming traffic using BPF device
-	if err := setBPFDirection(fd, bpfDIn); err != nil {
+	// Specify incoming only or bidirectional traffic using BPF device
+	if err := setBPFDirection(fd, direction); err != nil {
 		return 0, err
 	}
 
