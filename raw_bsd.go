@@ -219,7 +219,7 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 
 // SetBPFDirection controls whether inbound, or inbound and outbound packets are returned.
 func (p *packetConn) SetBPFDirection(direction int) error {
-	return p.setBPFDirection(p.fd, direction)
+	return setBPFDirection(p.fd, direction)
 }
 
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
