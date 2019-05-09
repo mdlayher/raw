@@ -62,6 +62,11 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return ErrNotImplemented
 }
 
+// SetBPFDirection is not currently implemented on this platform.
+func (p *packetConn) SetBPFDirection(direction int) error {
+	return ErrNotImplemented
+}
+
 // SetPromisc is not currently implemented on this platform.
 func (p *packetConn) SetPromiscuous(b bool) error {
 	return ErrNotImplemented

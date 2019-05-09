@@ -217,6 +217,11 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return syscall.SetBpf(p.fd, assembleBpfInsn(append(base, filter...)))
 }
 
+// SetBPFDirection controls whether inbound, or inbound and outbound packets are returned.
+func (p *packetConn) SetBPFDirection(direction int) error {
+	return p.setBPFDirection(p.fd, direction)
+}
+
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
 // to receive traffic that is not addressed to the interface.
 func (p *packetConn) SetPromiscuous(b bool) error {

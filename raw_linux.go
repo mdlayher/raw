@@ -233,6 +233,11 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 	return nil
 }
 
+// SetBPFDirection is not currently implemented on this platform.
+func (p *packetConn) SetBPFDirection(direction int) error {
+	return ErrNotImplemented
+}
+
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
 // to receive traffic that is not addressed to the interface.
 func (p *packetConn) SetPromiscuous(b bool) error {

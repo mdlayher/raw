@@ -86,6 +86,11 @@ func (c *Conn) SetBPF(filter []bpf.RawInstruction) error {
 	return c.p.SetBPF(filter)
 }
 
+// SetBPFDirection can be used to enable outbound packet processing
+func (c *Conn) SetBPFDirection(direction int) error {
+	return c.p.SetBPFDirection(direction)
+}
+
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
 // to receive traffic that is not addressed to the interface.
 func (c *Conn) SetPromiscuous(b bool) error {
