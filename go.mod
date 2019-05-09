@@ -1,4 +1,4 @@
-module github.com/hdm/raw
+module github.com/mdlayher/raw
 
 go 1.12
 
