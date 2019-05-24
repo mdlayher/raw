@@ -132,7 +132,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	}
 
 	// Get the length of the prepended BPF header.
-	hdr := (*bpfHdr)(unsafe.Pointer(&buf))
+	hdr := (*bpfHdr)(unsafe.Pointer(&buf[0]))
 	bpfl := (int)(hdr.hdrlen)
 
 	// Retrieve source MAC address of ethernet header
