@@ -5,47 +5,33 @@ package raw
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/net/bpf"
+	"golang.org/x/sys/unix"
 	"net"
 	"os"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
 	"unsafe"
-
-	"golang.org/x/net/bpf"
 )
 
 const (
 	// bpfDIn tells BPF to pass through only incoming packets, so we do not
 	// receive the packets we send using BPF.
 	bpfDIn = 0
-
-	// osFreeBSD is the GOOS name for FreeBSD.
-	osFreeBSD = "freebsd"
 )
-
-// bpfLen returns the length of the BPF header prepended to each incoming ethernet
-// frame.  FreeBSD uses a slightly modified header from other BSD variants.
-func bpfLen() int {
-	// Majority of BSD family systems use the bpf_hdr struct, but FreeBSD
-	// has replaced this with bpf_xhdr, which is longer.
-	const (
-		bpfHeaderLen  = 18
-		bpfXHeaderLen = 26
-	)
-
-	if runtime.GOOS == osFreeBSD {
-		return bpfXHeaderLen
-	}
-
-	return bpfHeaderLen
-}
 
 var (
 	// Must implement net.PacketConn at compile-time.
 	_ net.PacketConn = &packetConn{}
 )
+
+type bpfHdr struct {
+	_       unix.Timeval // 8 or 16 bytes depending on arch
+	caplen  uint32
+	datalen uint32
+	hdrlen  uint16
+}
 
 // packetConn is the Linux-specific implementation of net.PacketConn for this
 // package.
@@ -153,9 +139,9 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 	}
 
-	// TODO(mdlayher): consider parsing BPF header if it proves useful.
-	// BPF header length depends on the platform this code is running on
-	bpfl := bpfLen()
+	// Get the length of the prepended BPF header.
+	hdr := (*bpfHdr)(unsafe.Pointer(&buf))
+	bpfl := (int)(hdr.hdrlen)
 
 	// Retrieve source MAC address of ethernet header
 	mac := make(net.HardwareAddr, 6)
