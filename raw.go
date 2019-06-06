@@ -153,4 +153,9 @@ type Config struct {
 	// Linux only: initial filter to apply to the connection. This avoids
 	// capturing random packets before SetBPF is called.
 	Filter []bpf.RawInstruction
+
+	// BSD only: configure the BPF direction flag to allow selection of inbound
+	// only (0 - default) or bidirectional (1) packet processing.
+	// Has no effect on other operating systems.
+	BPFDirection int
 }
