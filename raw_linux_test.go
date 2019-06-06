@@ -416,7 +416,6 @@ func Test_packetConn_handleStats(t *testing.T) {
 					t.Fatalf("unexpected Stats[%02d] (-want +got):\n%s", i, diff)
 				}
 			}
-
 		})
 	}
 }
