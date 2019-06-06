@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/net/bpf"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -130,16 +131,14 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 			}
 		}
 
-		tv, err := newTimeval(timeout)
-		if err != nil {
-			return 0, nil, err
-		}
-		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(tv))); err != 0 {
+		tv := unix.NsecToTimeval(timeout.Nanoseconds())
+		if _, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(p.fd), syscall.BIOCSRTIMEOUT, uintptr(unsafe.Pointer(&tv))); err != 0 {
 			return 0, nil, syscall.Errno(err)
 		}
 
 		// Attempt to receive on socket
 		// The read sycall will NOT be interrupted by closing of the socket
+		var err error
 		n, err = syscall.Read(p.fd, buf)
 		if err != nil {
 			return n, nil, err
