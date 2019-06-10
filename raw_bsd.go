@@ -5,13 +5,15 @@ package raw
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/net/bpf"
 	"net"
 	"os"
 	"sync"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/net/bpf"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -132,8 +134,8 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	}
 
 	// Get the length of the prepended BPF header.
-	hdr := (*bpfHdr)(unsafe.Pointer(&buf[0]))
-	bpfl := (int)(hdr.hdrlen)
+	hdr := (*unix.BpfHdr)(unsafe.Pointer(&buf[0]))
+	bpfl := (int)(hdr.Hdrlen)
 
 	// Retrieve source MAC address of ethernet header
 	mac := make(net.HardwareAddr, 6)
