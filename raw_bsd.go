@@ -183,7 +183,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 }
 
 // WriteTo implements the net.PacketConn.WriteTo method.
-func (p *packetConn) WriteTo(b []byte, dest net.Addr) (int, error) {
+func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	if p.dgram {
 
 		// Insert the ethernet frame header.
@@ -196,7 +196,7 @@ func (p *packetConn) WriteTo(b []byte, dest net.Addr) (int, error) {
 		srcMac := p.ifi
 
 		b = append(make([]byte, 14), b...)
-		copy(b, destMac.HardwareAddr)
+		copy(b, dstMac.HardwareAddr)
 		copy(b[6:], srcMac.HardwareAddr)
 		// Assume there is no VLAN ID
 		b[12] = 0x8
