@@ -186,7 +186,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 func (p *packetConn) WriteTo(b []byte, dest net.Addr) (int, error) {
 	if p.dgram {
 
-		// Manual insert the the ethernet frame header
+		// Insert the ethernet frame header.
 
 		// Ensure correct Addr type.
 		dstMac, ok := addr.(*Addr)
