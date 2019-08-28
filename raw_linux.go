@@ -139,15 +139,14 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		return n, nil, err
 	}
 
+	var mac net.HardwareAddr
+
 	// Retrieve hardware address and other information from addr.
 	sa, ok := addr.(*unix.SockaddrLinklayer)
-	if !ok || sa.Halen < 6 {
-		return n, nil, unix.EINVAL
+	if ok && sa.Halen == 6 {
+		mac = make(net.HardwareAddr, sa.Halen)
+		copy(mac, sa.Addr[:])
 	}
-
-	// Use length specified to convert byte array into a hardware address slice.
-	mac := make(net.HardwareAddr, sa.Halen)
-	copy(mac, sa.Addr[:])
 
 	// packet(7):
 	//   sll_hatype and sll_pkttype are set on received packets for your
@@ -163,7 +162,7 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	// Ensure correct Addr type.
 	a, ok := addr.(*Addr)
-	if !ok || a.HardwareAddr == nil || len(a.HardwareAddr) < 6 {
+	if !ok || len(a.HardwareAddr) > 8 {
 		return 0, unix.EINVAL
 	}
 
