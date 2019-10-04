@@ -92,9 +92,7 @@ func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
 	p, err := newPacketConn(
 		&net.Interface{},
 		&addrRecvfromSocket{
-			addr: &unix.SockaddrLinklayer{
-				Halen: 5,
-			},
+			addr: nil,
 		},
 		0,
 		nil,
@@ -187,8 +185,6 @@ func Test_packetConnWriteToInvalidSockaddr(t *testing.T) {
 
 func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
 	addrs := []net.HardwareAddr{
-		// Too short.
-		{0xde, 0xad, 0xbe, 0xef, 0xde},
 		// Explicitly nil.
 		nil,
 	}
