@@ -4,7 +4,6 @@ package raw
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"runtime"
@@ -15,6 +14,8 @@ import (
 
 	"golang.org/x/net/bpf"
 	"golang.org/x/sys/unix"
+
+	"github.com/hyperized/bpf/file"
 )
 
 // osFreeBSD is the GOOS name for FreeBSD.
@@ -59,34 +60,13 @@ type packetConn struct {
 func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, error) {
 	// TODO(mdlayher): consider porting NoTimeouts option to BSD if it pans out.
 
-	var f *os.File
-	var err error
+	var (
+		bpfFile, err = file.GetBpfDevice(false)
+		fd = int(bpfFile.FileDescriptor())
+		f = bpfFile.File()
+	)
 
-	// Try to find an available BPF device
-	for i := 0; i <= 255; i++ {
-		bpfPath := fmt.Sprintf("/dev/bpf%d", i)
-		f, err = os.OpenFile(bpfPath, os.O_RDWR, 0666)
-		if err == nil {
-			// Found a usable device
-			break
-		}
-
-		// Device is busy, try the next one
-		if perr, ok := err.(*os.PathError); ok {
-			if perr.Err.(syscall.Errno) == syscall.EBUSY {
-				continue
-			}
-		}
-
-		return nil, err
-	}
-
-	if f == nil {
-		return nil, errors.New("unable to open BPF device")
-	}
-
-	fd := int(f.Fd())
-	if fd == -1 {
+	if bpfFile == nil {
 		return nil, errors.New("unable to open BPF device")
 	}
 
