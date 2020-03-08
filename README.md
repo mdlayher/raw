@@ -46,10 +46,10 @@ const etherTypeIPv4 uint16 = 0x0800
 var (
 	// update accordingly
 	interfaceName = "en0"
-	srcMAC        = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	dstMAC        = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	srcIP         = net.ParseIP("192.168.1.1")
-	dstIP         = net.ParseIP("192.168.1.2")
+	srcMAC        = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+	dstIP         = net.ParseIP("192.168.1.1")
+	srcIP         = net.ParseIP("192.168.1.2")
 )
 
 func main() {
@@ -69,11 +69,11 @@ func main() {
 		log.Fatalf("get icmp ping packet: %v", err)
 	}
 
-	ipPacket, err := getIPPacket(srcIP, dstIP, 1, pingPacket)
+	ipPacket, err := getIPPacket(dstIP, srcIP, 1, pingPacket)
 	if err != nil {
 		log.Fatalf("get ip packet: %v", err)
 	}
-	sendMessage(c, srcMAC, dstMAC, etherTypeIPv4, ipPacket)
+	sendMessage(c, dstMAC, srcMAC, etherTypeIPv4, ipPacket)
 }
 
 func getICMPPingPacket(data string) ([]byte, error) {
@@ -88,7 +88,7 @@ func getICMPPingPacket(data string) ([]byte, error) {
 	return ping.Marshal(nil)
 }
 
-func getIPPacket(src, dst net.IP, protocol int, msg []byte) ([]byte, error) {
+func getIPPacket(dst, src net.IP, protocol int, msg []byte) ([]byte, error) {
 
 	iph := &ipv4.Header{
 		Version:  ipv4.Version,
@@ -113,7 +113,7 @@ func getIPPacket(src, dst net.IP, protocol int, msg []byte) ([]byte, error) {
 	return append(ip, msg...), nil
 }
 
-func sendMessage(c net.PacketConn, src net.HardwareAddr, dst net.HardwareAddr, etherType uint16, payload []byte) {
+func sendMessage(c net.PacketConn, dst net.HardwareAddr, src net.HardwareAddr, etherType uint16, payload []byte) {
 
 	// minPayload is the minimum payload size for an Ethernet frame, assuming
 	payloadLength := len(payload)
