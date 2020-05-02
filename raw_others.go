@@ -65,6 +65,11 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return ErrNotImplemented
 }
 
+// SetMulticast is not currently implemented on this platform.
+func (p *packetConn) SetMulticast(addr net.Addr) error {
+	return ErrNotImplemented
+}
+
 // Stats is not currently implemented on this platform.
 func (p *packetConn) Stats() (*Stats, error) {
 	return nil, ErrNotImplemented
