@@ -172,46 +172,15 @@ func Test_packetConnReadFromRecvfromOK(t *testing.T) {
 	}
 }
 
-// Test for incorrect sockaddr type for WriteTo.
-
-func Test_packetConnWriteToInvalidSockaddr(t *testing.T) {
-	_, err := (&packetConn{}).WriteTo(nil, &net.IPAddr{})
-	if want, got := unix.EINVAL, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for malformed hardware address with WriteTo.
-
-func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
-	addrs := []net.HardwareAddr{
-		// Explicitly nil.
-		nil,
-	}
-
-	for _, addr := range addrs {
-		_, err := (&packetConn{}).WriteTo(nil, &Addr{
-			HardwareAddr: addr,
-		})
-		if want, got := unix.EINVAL, err; want != got {
-			t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-		}
-	}
-}
-
 // Test for a correct WriteTo with data and address.
 
-type sendtoSocket struct {
-	p     []byte
-	flags int
-	addr  unix.Sockaddr
+type writetoSocket struct {
+	p []byte
 	noopSocket
 }
 
-func (s *sendtoSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error {
+func (s *writetoSocket) Write(p []byte) error {
 	copy(s.p, p)
-	s.flags = flags
-	s.addr = to
 	return nil
 }
 
@@ -221,7 +190,7 @@ func Test_packetConnWriteToSendtoOK(t *testing.T) {
 
 	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
 
-	s := &sendtoSocket{
+	s := &writetoSocket{
 		p: make([]byte, wantN),
 	}
 
@@ -242,24 +211,11 @@ func Test_packetConnWriteToSendtoOK(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want, got := 0, s.flags; want != got {
-		t.Fatalf("unexpected flags:\n- want: %v\n-  got: %v", want, got)
-	}
-
 	if want, got := wantN, n; want != got {
 		t.Fatalf("unexpected data length:\n- want: %v\n-  got: %v", want, got)
 	}
 	if want, got := data, s.p; !bytes.Equal(want, got) {
 		t.Fatalf("unexpected data:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	sall, ok := s.addr.(*unix.SockaddrLinklayer)
-	if !ok {
-		t.Fatalf("write sockaddr has incorrect type: %T", s.addr)
-	}
-
-	if want, got := deadbeefHW, sall.Addr[:][:sall.Halen]; !bytes.Equal(want, got) {
-		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
 	}
 }
 
@@ -424,7 +380,7 @@ func (noopSocket) Bind(sa unix.Sockaddr) error                                  
 func (noopSocket) Close() error                                                       { return nil }
 func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) { return nil, nil }
 func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)           { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                 { return nil }
+func (noopSocket) Write(p []byte) error                                               { return nil }
 func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error  { return nil }
 func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error   { return nil }
 func (noopSocket) SetDeadline(timeout time.Time) error                                { return nil }
