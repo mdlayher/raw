@@ -248,6 +248,30 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return p.s.SetSockoptPacketMreq(unix.SOL_PACKET, membership, &mreq)
 }
 
+// SetMulticast will attach a link-layer multicast address to listen on the interface
+func (p *packetConn) SetMulticast(addr net.Addr) error {
+	// Ensure correct Addr type.
+	a, ok := addr.(*Addr)
+	if !ok || a.HardwareAddr == nil {
+		return unix.EINVAL
+	}
+
+	// Convert hardware address back to byte array form.
+	var baddr [8]byte
+	copy(baddr[:], a.HardwareAddr)
+
+	mreq := unix.PacketMreq{
+		Ifindex: int32(p.ifi.Index),
+		Type:    unix.PACKET_MR_MULTICAST,
+		Alen:    uint16(len(a.HardwareAddr)),
+		Address: baddr,
+	}
+
+	membership := unix.PACKET_ADD_MEMBERSHIP
+
+	return p.s.SetSockoptPacketMreq(unix.SOL_PACKET, membership, &mreq)
+}
+
 // Stats retrieves statistics from the Conn.
 func (p *packetConn) Stats() (*Stats, error) {
 	stats, err := p.s.GetSockoptTpacketStats(unix.SOL_PACKET, unix.PACKET_STATISTICS)
