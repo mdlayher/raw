@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -16,26 +15,6 @@ import (
 	"golang.org/x/net/bpf"
 	"golang.org/x/sys/unix"
 )
-
-// osFreeBSD is the GOOS name for FreeBSD.
-const osFreeBSD = "freebsd"
-
-// bpfLen returns the length of the BPF header prepended to each incoming ethernet
-// frame.  FreeBSD uses a slightly modified header from other BSD variants.
-func bpfLen() int {
-	// Majority of BSD family systems use the bpf_hdr struct, but FreeBSD
-	// has replaced this with bpf_xhdr, which is longer.
-	const (
-		bpfHeaderLen  = 18
-		bpfXHeaderLen = 26
-	)
-
-	if runtime.GOOS == osFreeBSD {
-		return bpfXHeaderLen
-	}
-
-	return bpfHeaderLen
-}
 
 // Must implement net.PacketConn at compile-time.
 var _ net.PacketConn = &packetConn{}
@@ -147,9 +126,9 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 	}
 
-	// TODO(mdlayher): consider parsing BPF header if it proves useful.
-	// BPF header length depends on the platform this code is running on
-	bpfl := bpfLen()
+	// Get the length of the prepended BPF header.
+	hdr := (*unix.BpfHdr)(unsafe.Pointer(&buf[0]))
+	bpfl := (int)(hdr.Hdrlen)
 
 	// Retrieve source MAC address of ethernet header
 	mac := make(net.HardwareAddr, 6)
