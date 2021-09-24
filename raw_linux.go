@@ -41,6 +41,8 @@ type socket interface {
 	Sendto([]byte, int, unix.Sockaddr) error
 	SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error
 	SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error
+	SetSockoptInt(level, name int, flags int) error
+	GetSockoptInt(level, name int) (int, error)
 	SetDeadline(time.Time) error
 	SetReadDeadline(time.Time) error
 	SetWriteDeadline(time.Time) error
@@ -258,6 +260,16 @@ func (p *packetConn) Stats() (*Stats, error) {
 	return p.handleStats(stats), nil
 }
 
+// SetSockoptInt sets socket options.
+func (p *packetConn) SetSockoptInt(name int, val int) error {
+	return p.s.SetSockoptInt(unix.SOL_SOCKET, name, val)
+}
+
+// GetSockoptInt gets socket options.
+func (p *packetConn) GetSockoptInt(name int) (int, error) {
+	return p.s.GetSockoptInt(unix.SOL_SOCKET, name)
+}
+
 // handleStats handles creation of Stats structures from raw packet socket stats.
 func (p *packetConn) handleStats(s *unix.TpacketStats) *Stats {
 	// Does the caller want instantaneous stats as provided by Linux?  If so,
@@ -386,4 +398,34 @@ func (s *sysSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq)
 		return err
 	}
 	return cerr
+}
+
+func (s *sysSocket) SetSockoptInt(level, name int, flags int) error {
+	var err error
+	cerr := s.rc.Control(func(fd uintptr) {
+		errno := unix.SetsockoptInt(int(fd), level, name, flags)
+		if errno != nil {
+			err = os.NewSyscallError("setsockopt", errno)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	return cerr
+}
+
+func (s *sysSocket) GetSockoptInt(level, name int) (int, error) {
+	var ret int
+	var err error
+	cerr := s.rc.Control(func(fd uintptr) {
+		v, errno := unix.GetsockoptInt(int(fd), level, name)
+		ret = v
+		if errno != nil {
+			err = os.NewSyscallError("getsockopt", errno)
+		}
+	})
+	if err != nil {
+		return ret, err
+	}
+	return ret, cerr
 }

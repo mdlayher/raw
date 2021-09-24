@@ -90,6 +90,16 @@ func (c *Conn) SetPromiscuous(b bool) error {
 	return c.p.SetPromiscuous(b)
 }
 
+// SetSockoptInt sets socket options.
+func (c *Conn) SetSockoptInt(name int, val int) error {
+	return c.p.SetSockoptInt(name, val)
+}
+
+// GetSockoptInt gets socket options.
+func (c *Conn) GetSockoptInt(name int) (int, error) {
+	return c.p.GetSockoptInt(name)
+}
+
 // Stats contains statistics about a Conn.
 type Stats struct {
 	// The total number of packets received.
