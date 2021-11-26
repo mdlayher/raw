@@ -38,7 +38,7 @@ type socket interface {
 	Close() error
 	GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error)
 	Recvfrom([]byte, int) (int, unix.Sockaddr, error)
-	Sendto([]byte, int, unix.Sockaddr) error
+	Write([]byte) error
 	SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error
 	SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error
 	SetDeadline(time.Time) error
@@ -161,29 +161,8 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 }
 
 // WriteTo implements the net.PacketConn.WriteTo method.
-func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	// Ensure correct Addr type.
-	a, ok := addr.(*Addr)
-	if !ok || a.HardwareAddr == nil {
-		return 0, unix.EINVAL
-	}
-
-	// Convert hardware address back to byte array form.
-	var baddr [8]byte
-	copy(baddr[:], a.HardwareAddr)
-
-	// Send message on socket to the specified hardware address from addr
-	// packet(7):
-	//   When you send packets it is enough to specify sll_family, sll_addr,
-	//   sll_halen, sll_ifindex, and sll_protocol. The other fields should
-	//   be 0.
-	// In this case, sll_family is taken care of automatically by unix.
-	err := p.s.Sendto(b, 0, &unix.SockaddrLinklayer{
-		Ifindex:  p.ifi.Index,
-		Halen:    uint8(len(a.HardwareAddr)),
-		Addr:     baddr,
-		Protocol: p.pbe,
-	})
+func (p *packetConn) WriteTo(b []byte, _ net.Addr) (int, error) {
+	err := p.s.Write(b)
 	return len(b), err
 }
 
@@ -347,10 +326,10 @@ func (s *sysSocket) Recvfrom(p []byte, flags int) (n int, addr unix.Sockaddr, er
 	return n, addr, err
 }
 
-func (s *sysSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error {
+func (s *sysSocket) Write(p []byte) error {
 	var err error
 	cerr := s.rc.Write(func(fd uintptr) bool {
-		err = unix.Sendto(int(fd), p, flags, to)
+		_, err = unix.Write(int(fd), p)
 		// See comment in Recvfrom.
 		return err != unix.EAGAIN
 	})
