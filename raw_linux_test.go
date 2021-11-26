@@ -363,6 +363,64 @@ func Test_packetConnSetBPF(t *testing.T) {
 	}
 }
 
+type setSockoptIntSocket struct {
+	setsockoptInt func(level, name int, flags int) error
+	getsockoptInt func(level, name int) (int, error)
+	noopSocket
+}
+
+func (s *setSockoptIntSocket) SetSockoptInt(level, name int, flags int) error {
+	return s.setsockoptInt(level, name, flags)
+}
+
+func (s *setSockoptIntSocket) GetSockoptInt(level, name int) (int, error) {
+	return s.getsockoptInt(level, name)
+}
+
+func Test_packetConnSetInt(t *testing.T) {
+
+	setFn := func(level, name int, _ int) error {
+		if want, got := unix.SOL_SOCKET, level; want != got {
+			t.Fatalf("unexpected setsockopt level:\n- want: %v\n-  got: %v", want, got)
+		}
+		if want, got := unix.PACKET_VERSION, name; want != got {
+			t.Fatalf("unexpected setsockopt name:\n- want: %v\n-  got: %v", want, got)
+		}
+		return nil
+	}
+
+	getFn := func(_, _ int) (int, error) {
+		return unix.TPACKET_V3, nil
+	}
+
+	p, err := newPacketConn(
+		&net.Interface{},
+		&setSockoptIntSocket{
+			setsockoptInt: setFn,
+			getsockoptInt: getFn,
+		},
+		1,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.SetSockoptInt(unix.PACKET_VERSION, unix.TPACKET_V3); err != nil {
+		t.Fatalf("failed to set sockopt: %v", err)
+	}
+
+	ret, err := p.GetSockoptInt(unix.PACKET_VERSION)
+
+	if err != nil {
+		t.Fatalf("failed to get sockopt: %v", err)
+	}
+
+	if ret != unix.TPACKET_V3 {
+		t.Fatalf("sockopt doesn't match, got %v / set %v", ret, unix.TPACKET_V3)
+	}
+}
+
 func Test_packetConn_handleStats(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -420,13 +478,17 @@ func Test_packetConn_handleStats(t *testing.T) {
 // the basis for more specific socket implementations.
 type noopSocket struct{}
 
-func (noopSocket) Bind(sa unix.Sockaddr) error                                        { return nil }
-func (noopSocket) Close() error                                                       { return nil }
-func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) { return nil, nil }
-func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)           { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                 { return nil }
-func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error  { return nil }
-func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error   { return nil }
-func (noopSocket) SetDeadline(timeout time.Time) error                                { return nil }
-func (noopSocket) SetReadDeadline(timeout time.Time) error                            { return nil }
-func (noopSocket) SetWriteDeadline(timeout time.Time) error                           { return nil }
+func (noopSocket) Bind(sa unix.Sockaddr) error { return nil }
+func (noopSocket) Close() error                { return nil }
+func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) {
+	return nil, nil
+}
+func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)          { return 0, nil, nil }
+func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                { return nil }
+func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error { return nil }
+func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error  { return nil }
+func (noopSocket) SetSockoptInt(level, name int, flags int) error                    { return nil }
+func (noopSocket) GetSockoptInt(level, name int) (int, error)                        { return 0, nil }
+func (noopSocket) SetDeadline(timeout time.Time) error                               { return nil }
+func (noopSocket) SetReadDeadline(timeout time.Time) error                           { return nil }
+func (noopSocket) SetWriteDeadline(timeout time.Time) error                          { return nil }

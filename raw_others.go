@@ -69,3 +69,13 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 func (p *packetConn) Stats() (*Stats, error) {
 	return nil, ErrNotImplemented
 }
+
+// SetSockoptInt sets socket options.
+func (p *packetConn) SetSockoptInt(name int, val int) error {
+	return ErrNotImplemented
+}
+
+// GetSockoptInt gets socket options.
+func (p *packetConn) GetSockoptInt(name int) (int, error) {
+	return 0, ErrNotImplemented
+}

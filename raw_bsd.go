@@ -227,6 +227,16 @@ func (p *packetConn) Stats() (*Stats, error) {
 	return nil, ErrNotImplemented
 }
 
+// SetSockoptInt sets socket options.
+func (p *packetConn) SetSockoptInt(name int, val int) error {
+	return ErrNotImplemented
+}
+
+// GetSockoptInt gets socket options.
+func (p *packetConn) GetSockoptInt(name int) (int, error) {
+	return 0, ErrNotImplemented
+}
+
 // configureBPF configures a BPF device with the specified file descriptor to
 // use the specified network and interface and protocol.
 func configureBPF(fd int, ifi *net.Interface, proto uint16, direction int) (int, error) {
