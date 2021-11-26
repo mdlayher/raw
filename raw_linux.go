@@ -341,10 +341,10 @@ func (s *sysSocket) Recvfrom(p []byte, flags int) (n int, addr unix.Sockaddr, er
 		// If the socket is in blocking mode, EAGAIN should never occur.
 		return err != unix.EAGAIN
 	})
-	if err != nil {
-		return n, addr, err
+	if cerr != nil {
+		return n, addr, cerr
 	}
-	return n, addr, cerr
+	return n, addr, err
 }
 
 func (s *sysSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error {
