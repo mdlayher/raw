@@ -1,23 +1,21 @@
-# raw [![builds.sr.ht status](https://builds.sr.ht/~mdlayher/raw.svg)](https://builds.sr.ht/~mdlayher/raw?) [![GoDoc](https://godoc.org/github.com/mdlayher/raw?status.svg)](https://godoc.org/github.com/mdlayher/raw) [![Go Report Card](https://goreportcard.com/badge/github.com/mdlayher/raw)](https://goreportcard.com/report/github.com/mdlayher/raw)
+# raw [![Test Status](https://github.com/mdlayher/raw/workflows/Test/badge.svg)](https://github.com/mdlayher/raw/actions) [![Go Reference](https://pkg.go.dev/badge/github.com/mdlayher/raw.svg)](https://pkg.go.dev/github.com/mdlayher/raw)  [![Go Report Card](https://goreportcard.com/badge/github.com/mdlayher/raw)](https://goreportcard.com/report/github.com/mdlayher/raw)
 
-Package `raw` enables reading and writing data at the device driver level for
-a network interface.  MIT Licensed.
+Package `raw` enables reading and writing data at the device driver level for a
+network interface. MIT Licensed.
 
-For more information about using raw sockets with Ethernet frames in Go, check
-out my blog post: [Network Protocol Breakdown: Ethernet and Go](https://medium.com/@mdlayher/network-protocol-breakdown-ethernet-and-go-de985d726cc1).
+For more information about using sockets with Ethernet frames in Go, check out
+my blog post: [Network Protocol Breakdown: Ethernet and
+Go](https://mdlayher.com/blog/network-protocol-breakdown-ethernet-and-go/).
 
-Portions of this code are taken from the Go standard library.  The Go
-standard library is Copyright (c) 2012 The Go Authors. All rights reserved.
-The Go license can be found at https://golang.org/LICENSE.
+## Unmaintained
 
-## Stability
+This repository was one of my first major Go networking libraries. Although I
+have updated it on Linux to incorporate modern Go best practices (asynchronous
+I/O, runtime network poller integration), the non-Linux platform code is
+effectively unmaintained and does not have the same level of functionality.
 
-At this time, package `raw` is in a pre-v1.0.0 state. Changes are being made
-which may impact the exported API of this package and others in its ecosystem.
-
-The general policy of this package is to only support the latest, stable version
-of Go. Compatibility shims may be added for prior versions of Go on an as-needed
-basis. If you would like to raise a concern, please [file an issue](https://github.com/mdlayher/raw/issues/new).
-
-**If you depend on this package in your applications, please vendor it or use Go
-modules when building your application.**
+I encourage all Linux users of this package to migrate to
+[`github.com/mdlayher/packet`](https://github.com/mdlayher/packet), which is a
+modern `AF_PACKET` library. The existing `*raw.Conn` APIs now call directly into
+the equivalent `*packet.Conn` APIs, and a level of indirection can be removed by
+migrating to that package.
