@@ -1,9 +1,9 @@
 github.com/google/go-cmp v0.5.6 h1:BKbKCqvP6I+rmFHt06ZmyQtvB8xAkWdhFyr0ZUNZcxQ=
 github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
-github.com/mdlayher/packet v0.0.0-20220219183824-b33ba3a66b82 h1:MMUazdCHxejG6eke2cO1J1Ypw2halR2xBY8KnaWJj70=
-github.com/mdlayher/packet v0.0.0-20220219183824-b33ba3a66b82/go.mod h1:Djqj+riYm0WoQ3ltGkZVxh6iJV0BbvvPDK8/0HttMKQ=
-github.com/mdlayher/socket v0.2.0 h1:EY4YQd6hTAg2tcXF84p5DTHazShE50u5HeBzBaNgjkA=
-github.com/mdlayher/socket v0.2.0/go.mod h1:QLlNPkFR88mRUNQIzRBMfXxwKal8H7u1h3bL1CV+f0E=
+github.com/mdlayher/packet v0.0.0-20220221164757-67998ac0ff93 h1:elUwhY+HQaIV9kMgmsU9zOF413pDKoo2uFNypgP5SxM=
+github.com/mdlayher/packet v0.0.0-20220221164757-67998ac0ff93/go.mod h1:K9sWKMgN6wa78BbuJL+dT1ZZdiAfhkc2fb6XXLjHulk=
+github.com/mdlayher/socket v0.2.1 h1:F2aaOwb53VsBE+ebRS9bLd7yPOfYUMC8lOODdCBDY6w=
+github.com/mdlayher/socket v0.2.1/go.mod h1:QLlNPkFR88mRUNQIzRBMfXxwKal8H7u1h3bL1CV+f0E=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/net v0.0.0-20190503192946-f4e77d36d62c h1:uOCk1iQW6Vc18bnC13MfzScl+wdKBmM9Y9kU7Z83/lw=
 golang.org/x/net v0.0.0-20190503192946-f4e77d36d62c/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=

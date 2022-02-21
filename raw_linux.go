@@ -5,10 +5,8 @@ package raw
 
 import (
 	"net"
-	"os"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/mdlayher/packet"
 	"golang.org/x/net/bpf"
@@ -39,8 +37,10 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 		typ = packet.Datagram
 	}
 
-	// TODO(mdlayher): option to apply BPF filter before bind(2).
-	c, err := packet.Listen(ifi, typ, int(proto), nil)
+	c, err := packet.Listen(ifi, typ, int(proto), &packet.Config{
+		// Propagate matching options.
+		Filter: cfg.Filter,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -105,41 +105,18 @@ func (p *packetConn) SetWriteDeadline(t time.Time) error {
 
 // SetBPF attaches an assembled BPF program to a raw net.PacketConn.
 func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
-	prog := unix.SockFprog{
-		Len:    uint16(len(filter)),
-		Filter: (*unix.SockFilter)(unsafe.Pointer(&filter[0])),
-	}
-
-	err := p.s.SetSockoptSockFprog(
-		unix.SOL_SOCKET,
-		unix.SO_ATTACH_FILTER,
-		&prog,
-	)
-	if err != nil {
-		return os.NewSyscallError("setsockopt", err)
-	}
-	return nil
+	return p.c.SetBPF(filter)
 }
 
 // SetPromiscuous enables or disables promiscuous mode on the interface, allowing it
 // to receive traffic that is not addressed to the interface.
-func (p *packetConn) SetPromiscuous(b bool) error {
-	mreq := unix.PacketMreq{
-		Ifindex: int32(p.ifi.Index),
-		Type:    unix.PACKET_MR_PROMISC,
-	}
-
-	membership := unix.PACKET_ADD_MEMBERSHIP
-	if !b {
-		membership = unix.PACKET_DROP_MEMBERSHIP
-	}
-
-	return p.s.SetSockoptPacketMreq(unix.SOL_PACKET, membership, &mreq)
+func (p *packetConn) SetPromiscuous(enable bool) error {
+	return p.c.SetPromiscuous(enable)
 }
 
 // Stats retrieves statistics from the Conn.
 func (p *packetConn) Stats() (*Stats, error) {
-	stats, err := p.s.GetSockoptTpacketStats(unix.SOL_PACKET, unix.PACKET_STATISTICS)
+	stats, err := p.c.Stats()
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +124,8 @@ func (p *packetConn) Stats() (*Stats, error) {
 	return p.handleStats(stats), nil
 }
 
-// handleStats handles creation of Stats structures from raw packet socket stats.
-func (p *packetConn) handleStats(s *unix.TpacketStats) *Stats {
+// handleStats handles creation of Stats structures from *packet.Stats.
+func (p *packetConn) handleStats(s *packet.Stats) *Stats {
 	// Does the caller want instantaneous stats as provided by Linux?  If so,
 	// return the structure directly.
 	if p.noCumulativeStats {
