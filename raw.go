@@ -1,6 +1,9 @@
 // Package raw enables reading and writing data at the device driver level for a
 // network interface.
 //
+// Deprecated: use github.com/mdlayher/packet on Linux instead. This package is
+// unmaintained.
+//
 //
 // Unmaintained
 //
@@ -13,7 +16,7 @@
 // I encourage all Linux users of this package to migrate to
 // https://github.com/mdlayher/packet, which is a modern AF_PACKET library. The
 // existing *raw.Conn APIs now call directly into the equivalent *packet.Conn
-// APIs.
+// APIs, and a level of indirection can be removed by migrating to that package.
 package raw
 
 import (

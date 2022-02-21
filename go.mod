@@ -1,3 +1,5 @@
+// Deprecated: use github.com/mdlayher/packet on Linux instead. This package is
+// unmaintained.
 module github.com/mdlayher/raw
 
 go 1.17

@@ -3,6 +3,10 @@
 Package `raw` enables reading and writing data at the device driver level for a
 network interface. MIT Licensed.
 
+Deprecated: use
+[`github.com/mdlayher/packet`](https://github.com/mdlayher/packet) on Linux
+instead. This package is unmaintained.
+
 For more information about using sockets with Ethernet frames in Go, check out
 my blog post: [Network Protocol Breakdown: Ethernet and
 Go](https://mdlayher.com/blog/network-protocol-breakdown-ethernet-and-go/).
