@@ -1,432 +1,147 @@
-// +build linux
+//go:build go1.16
+// +build go1.16
 
-package raw
+// Just because the library builds and runs on older versions of Go doesn't mean
+// we have to apply the same restrictions for tests. Go 1.16 is the oldest
+// upstream supported version of Go as of February 2022.
+
+package raw_test
 
 import (
-	"bytes"
+	"encoding/binary"
+	"errors"
 	"net"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
-	"golang.org/x/net/bpf"
+	"github.com/mdlayher/raw"
 	"golang.org/x/sys/unix"
 )
 
-// Test to ensure that socket is bound with correct sockaddr_ll information
+// These tests are effectively a copy/paste of
+// https://github.com/mdlayher/packet tests, because *raw.PacketConn is now
+// backed by *packet.Conn on Linux.
+//
+// This locks in the behaviors and verifies the same functionality for existing
+// users of package raw who may not ever migrate to the new package.
 
-type bindSocket struct {
-	bind unix.Sockaddr
-	noopSocket
-}
+func TestConnListenPacket(t *testing.T) {
+	// Open a connection on an Ethernet interface and begin listening for
+	// incoming Ethernet frames. We assume that this interface will receive some
+	// sort of traffic in the next 30 seconds and we will capture that traffic
+	// by looking for any EtherType value (ETH_P_ALL).
+	c, ifi := testConn(t)
+	t.Logf("interface: %q, MTU: %d", ifi.Name, ifi.MTU)
 
-func (s *bindSocket) Bind(sa unix.Sockaddr) error {
-	s.bind = sa
-	return nil
-}
+	if err := c.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		t.Fatalf("failed to set read deadline: %v", err)
+	}
 
-func Test_newPacketConnBind(t *testing.T) {
-	s := &bindSocket{}
+	b := make([]byte, ifi.MTU)
+	n, addr, err := c.ReadFrom(b)
+	if err != nil {
+		t.Fatalf("failed to read Ethernet frame: %v", err)
+	}
 
-	ifIndex := 1
-	protocol := uint16(1)
+	// Received some data, assume some Stats were populated.
+	stats, err := c.Stats()
+	if err != nil {
+		t.Fatalf("failed to fetch stats: %v", err)
+	}
+	if stats.Packets == 0 {
+		t.Fatal("stats indicated 0 received packets")
+	}
 
-	_, err := newPacketConn(
-		&net.Interface{
-			Index: ifIndex,
-		},
-		s,
-		protocol,
-		nil,
+	t.Logf("  - packets: %d, drops: %d",
+		stats.Packets, stats.Drops)
+
+	// TODO(mdlayher): we could import github.com/mdlayher/ethernet, but parsing
+	// an Ethernet frame header is fairly easy and this keeps the go.mod tidy.
+
+	// Need at least destination MAC, source MAC, and EtherType.
+	const header = 6 + 6 + 2
+	if n < header {
+		t.Fatalf("did not read a complete Ethernet frame from %v, only %d bytes read",
+			addr, n)
+	}
+
+	// Parse the header to provide tidy log output.
+	var (
+		dst = net.HardwareAddr(b[0:6])
+		src = net.HardwareAddr(b[6:12])
+		et  = binary.BigEndian.Uint16(b[12:14])
 	)
+
+	// Check for the most likely EtherType values.
+	var ets string
+	switch et {
+	case 0x0800:
+		ets = "IPv4"
+	case 0x0806:
+		ets = "ARP"
+	case 0x86dd:
+		ets = "IPv6"
+	default:
+		ets = "unknown"
+	}
+
+	// And finally print what we found for the user.
+	t.Log("Ethernet frame:")
+	t.Logf("  - destination: %s", dst)
+	t.Logf("  -      source: %s", src)
+	t.Logf("  -   ethertype: %#04x (%s)", et, ets)
+	t.Logf("  -     payload: %d bytes", n-header)
+}
+
+// testConn produces a *raw.Conn bound to the returned *net.Interface. The
+// caller does not need to call Close on the *raw.Conn.
+func testConn(t *testing.T) (*raw.Conn, *net.Interface) {
+	t.Helper()
+
+	// TODO(mdlayher): probably parameterize the EtherType.
+	ifi := testInterface(t)
+	c, err := raw.ListenPacket(ifi, unix.ETH_P_ALL, nil)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	sall, ok := s.bind.(*unix.SockaddrLinklayer)
-	if !ok {
-		t.Fatalf("bind sockaddr has incorrect type: %T", s.bind)
-	}
-
-	if want, got := ifIndex, sall.Ifindex; want != got {
-		t.Fatalf("unexpected network interface index:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := protocol, sall.Protocol; want != got {
-		t.Fatalf("unexpected protocol:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for incorrect sockaddr type after recvfrom on a socket.
-
-type addrRecvfromSocket struct {
-	addr unix.Sockaddr
-	noopSocket
-}
-
-func (s *addrRecvfromSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error) {
-	return 0, s.addr, nil
-}
-
-func Test_packetConnReadFromRecvfromInvalidSockaddr(t *testing.T) {
-	p, err := newPacketConn(
-		&net.Interface{},
-		&addrRecvfromSocket{
-			addr: &unix.SockaddrInet4{},
-		},
-		0,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = p.ReadFrom(nil)
-	if want, got := unix.EINVAL, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for malformed hardware address after recvfrom on a socket
-
-func Test_packetConnReadFromRecvfromInvalidHardwareAddr(t *testing.T) {
-	p, err := newPacketConn(
-		&net.Interface{},
-		&addrRecvfromSocket{
-			addr: nil,
-		},
-		0,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = p.ReadFrom(nil)
-	if want, got := unix.EINVAL, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for a correct ReadFrom with data and address.
-
-type recvfromSocket struct {
-	p     []byte
-	flags int
-	addr  unix.Sockaddr
-	noopSocket
-}
-
-func (s *recvfromSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error) {
-	copy(p, s.p)
-	s.flags = flags
-	return len(s.p), s.addr, nil
-}
-
-func Test_packetConnReadFromRecvfromOK(t *testing.T) {
-	const wantN = 4
-	data := []byte{0, 1, 2, 3}
-	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
-
-	s := &recvfromSocket{
-		p: data,
-		addr: &unix.SockaddrLinklayer{
-			Halen: 6,
-			Addr:  [8]byte{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad, 0x00, 0x00},
-		},
-	}
-
-	p, err := newPacketConn(
-		&net.Interface{},
-		s,
-		0,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	buf := make([]byte, 8)
-	n, addr, err := p.ReadFrom(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if want, got := 0, s.flags; want != got {
-		t.Fatalf("unexpected flags:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	raddr, ok := addr.(*Addr)
-	if !ok {
-		t.Fatalf("read sockaddr has incorrect type: %T", addr)
-	}
-	if want, got := deadbeefHW, raddr.HardwareAddr; !bytes.Equal(want, got) {
-		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	if want, got := wantN, n; want != got {
-		t.Fatalf("unexpected data length:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	if want, got := data, buf[:n]; !bytes.Equal(want, got) {
-		t.Fatalf("unexpected data:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for incorrect sockaddr type for WriteTo.
-
-func Test_packetConnWriteToInvalidSockaddr(t *testing.T) {
-	_, err := (&packetConn{}).WriteTo(nil, &net.IPAddr{})
-	if want, got := unix.EINVAL, err; want != got {
-		t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test for malformed hardware address with WriteTo.
-
-func Test_packetConnWriteToInvalidHardwareAddr(t *testing.T) {
-	addrs := []net.HardwareAddr{
-		// Explicitly nil.
-		nil,
-	}
-
-	for _, addr := range addrs {
-		_, err := (&packetConn{}).WriteTo(nil, &Addr{
-			HardwareAddr: addr,
-		})
-		if want, got := unix.EINVAL, err; want != got {
-			t.Fatalf("unexpected error:\n- want: %v\n-  got: %v", want, got)
-		}
-	}
-}
-
-// Test for a correct WriteTo with data and address.
-
-type sendtoSocket struct {
-	p     []byte
-	flags int
-	addr  unix.Sockaddr
-	noopSocket
-}
-
-func (s *sendtoSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error {
-	copy(s.p, p)
-	s.flags = flags
-	s.addr = to
-	return nil
-}
-
-func Test_packetConnWriteToSendtoOK(t *testing.T) {
-	const wantN = 4
-	data := []byte{0, 1, 2, 3}
-
-	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
-
-	s := &sendtoSocket{
-		p: make([]byte, wantN),
-	}
-
-	p, err := newPacketConn(
-		&net.Interface{},
-		s,
-		0,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	n, err := p.WriteTo(data, &Addr{
-		HardwareAddr: deadbeefHW,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if want, got := 0, s.flags; want != got {
-		t.Fatalf("unexpected flags:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	if want, got := wantN, n; want != got {
-		t.Fatalf("unexpected data length:\n- want: %v\n-  got: %v", want, got)
-	}
-	if want, got := data, s.p; !bytes.Equal(want, got) {
-		t.Fatalf("unexpected data:\n- want: %v\n-  got: %v", want, got)
-	}
-
-	sall, ok := s.addr.(*unix.SockaddrLinklayer)
-	if !ok {
-		t.Fatalf("write sockaddr has incorrect type: %T", s.addr)
-	}
-
-	if want, got := deadbeefHW, sall.Addr[:][:sall.Halen]; !bytes.Equal(want, got) {
-		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test that socket close functions as intended.
-
-type captureCloseSocket struct {
-	closed bool
-	noopSocket
-}
-
-func (s *captureCloseSocket) Close() error {
-	s.closed = true
-	return nil
-}
-
-func Test_packetConnClose(t *testing.T) {
-	s := &captureCloseSocket{}
-	p := &packetConn{
-		s: s,
-	}
-
-	if err := p.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	if !s.closed {
-		t.Fatalf("socket should be closed, but is not")
-	}
-}
-
-// Test that LocalAddr returns the hardware address of the network interface
-// which is being used by the socket.
-
-func Test_packetConnLocalAddr(t *testing.T) {
-	deadbeefHW := net.HardwareAddr{0xde, 0xad, 0xbe, 0xef, 0xde, 0xad}
-
-	p := &packetConn{
-		ifi: &net.Interface{
-			HardwareAddr: deadbeefHW,
-		},
-	}
-
-	if want, got := deadbeefHW, p.LocalAddr().(*Addr).HardwareAddr; !bytes.Equal(want, got) {
-		t.Fatalf("unexpected hardware address:\n- want: %v\n-  got: %v", want, got)
-	}
-}
-
-// Test that BPF filter attachment works as intended.
-
-type setSockoptSocket struct {
-	setsockoptSockFprog func(level, name int, fprog *unix.SockFprog) error
-	noopSocket
-}
-
-func (s *setSockoptSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error {
-	return s.setsockoptSockFprog(level, name, fprog)
-}
-
-func Test_packetConnSetBPF(t *testing.T) {
-	filter, err := bpf.Assemble([]bpf.Instruction{
-		bpf.RetConstant{Val: 0},
-	})
-	if err != nil {
-		t.Fatalf("failed to assemble filter: %v", err)
-	}
-
-	count := 0
-	fn := func(level, name int, _ *unix.SockFprog) error {
-		// Though we can't check the filter itself, we can check the setsockopt
-		// level and name for correctness.
-		if want, got := unix.SOL_SOCKET, level; want != got {
-			t.Fatalf("unexpected setsockopt level:\n- want: %v\n-  got: %v", want, got)
-		}
-		if want, got := unix.SO_ATTACH_FILTER, name; want != got {
-			t.Fatalf("unexpected setsockopt name:\n- want: %v\n-  got: %v", want, got)
+		if errors.Is(err, os.ErrPermission) {
+			t.Skipf("skipping, permission denied (try setting CAP_NET_RAW capability): %v", err)
 		}
 
-		count++
-		return nil
+		t.Fatalf("failed to listen: %v", err)
 	}
 
-	s := &setSockoptSocket{
-		setsockoptSockFprog: fn,
-	}
+	t.Cleanup(func() { c.Close() })
+	return c, ifi
+}
 
-	p, err := newPacketConn(&net.Interface{}, s, 1, filter)
+// testInterface looks for a suitable Ethernet interface to bind a *packet.Conn.
+func testInterface(t *testing.T) *net.Interface {
+	ifis, err := net.Interfaces()
 	if err != nil {
-		t.Fatalf("failed to create connection with filter: %v", err)
+		t.Fatalf("failed to get network interfaces: %v", err)
 	}
 
-	if count != 1 {
-		t.Fatal("creating a socket with filter didn't install it")
+	if len(ifis) == 0 {
+		t.Skip("skipping, no network interfaces found")
 	}
 
-	if err := p.SetBPF(filter); err != nil {
-		t.Fatalf("failed to attach filter: %v", err)
+	// Try to find a suitable network interface for tests.
+	var tried []string
+	for _, ifi := range ifis {
+		tried = append(tried, ifi.Name)
+
+		// true is used to line up other checks.
+		ok := true &&
+			// Look for an Ethernet interface.
+			len(ifi.HardwareAddr) == 6 &&
+			// Look for up, multicast, broadcast.
+			ifi.Flags&(net.FlagUp|net.FlagMulticast|net.FlagBroadcast) != 0
+
+		if ok {
+			return &ifi
+		}
 	}
 
-	if count != 2 {
-		t.Fatal("creating a socket with filter didn't install it")
-	}
+	t.Skipf("skipping, could not find a usable network interface, tried: %s", tried)
+	panic("unreachable")
 }
-
-func Test_packetConn_handleStats(t *testing.T) {
-	tests := []struct {
-		name         string
-		noCumulative bool
-		stats        []unix.TpacketStats
-		out          []Stats
-	}{
-		{
-			name:         "no cumulative",
-			noCumulative: true,
-			stats: []unix.TpacketStats{
-				// Expect these exact outputs.
-				{Packets: 1, Drops: 1},
-				{Packets: 2, Drops: 2},
-			},
-			out: []Stats{
-				{Packets: 1, Drops: 1},
-				{Packets: 2, Drops: 2},
-			},
-		},
-		{
-			name: "cumulative",
-			stats: []unix.TpacketStats{
-				// Expect accumulation of structures.
-				{Packets: 1, Drops: 1},
-				{Packets: 2, Drops: 2},
-			},
-			out: []Stats{
-				{Packets: 1, Drops: 1},
-				{Packets: 3, Drops: 3},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &packetConn{noCumulativeStats: tt.noCumulative}
-
-			if diff := cmp.Diff(len(tt.stats), len(tt.out)); diff != "" {
-				t.Fatalf("unexpected number of test cases (-want +got):\n%s", diff)
-			}
-
-			for i := 0; i < len(tt.stats); i++ {
-				out := *p.handleStats(&tt.stats[i])
-
-				if diff := cmp.Diff(tt.out[i], out); diff != "" {
-					t.Fatalf("unexpected Stats[%02d] (-want +got):\n%s", i, diff)
-				}
-			}
-		})
-	}
-}
-
-// noopSocket is a socket implementation which noops every operation.  It is
-// the basis for more specific socket implementations.
-type noopSocket struct{}
-
-func (noopSocket) Bind(sa unix.Sockaddr) error                                        { return nil }
-func (noopSocket) Close() error                                                       { return nil }
-func (noopSocket) GetSockoptTpacketStats(level, name int) (*unix.TpacketStats, error) { return nil, nil }
-func (noopSocket) Recvfrom(p []byte, flags int) (int, unix.Sockaddr, error)           { return 0, nil, nil }
-func (noopSocket) Sendto(p []byte, flags int, to unix.Sockaddr) error                 { return nil }
-func (noopSocket) SetSockoptPacketMreq(level, name int, mreq *unix.PacketMreq) error  { return nil }
-func (noopSocket) SetSockoptSockFprog(level, name int, fprog *unix.SockFprog) error   { return nil }
-func (noopSocket) SetDeadline(timeout time.Time) error                                { return nil }
-func (noopSocket) SetReadDeadline(timeout time.Time) error                            { return nil }
-func (noopSocket) SetWriteDeadline(timeout time.Time) error                           { return nil }

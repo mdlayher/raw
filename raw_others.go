@@ -1,3 +1,4 @@
+//go:build !darwin && !dragonfly && !freebsd && !linux && !netbsd && !openbsd
 // +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd
 
 package raw
@@ -61,7 +62,7 @@ func (p *packetConn) SetBPF(filter []bpf.RawInstruction) error {
 }
 
 // SetPromisc is not currently implemented on this platform.
-func (p *packetConn) SetPromiscuous(b bool) error {
+func (p *packetConn) SetPromiscuous(enable bool) error {
 	return ErrNotImplemented
 }
 
