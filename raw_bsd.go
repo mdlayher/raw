@@ -38,6 +38,16 @@ func bpfLen() int {
 	return bpfHeaderLen
 }
 
+func ipLen(ipFrame []byte) int {
+	len := 14 // 2x mac (6 bytes each) + type (2 bytes)
+	if ipFrame[12] == 0x81 {
+		// This frame has a VLAN ID
+		len += 4
+	}
+	return len
+
+}
+
 // Must implement net.PacketConn at compile-time.
 var _ net.PacketConn = &packetConn{}
 
@@ -49,6 +59,7 @@ type packetConn struct {
 	f      *os.File
 	fd     int
 	buflen int
+	dgram  bool // True if the link layer has to be removed
 
 	// Timeouts set via Set{Read,}Deadline, guarded by mutex
 	timeoutMu sync.RWMutex
@@ -103,6 +114,7 @@ func listenPacket(ifi *net.Interface, proto uint16, cfg Config) (*packetConn, er
 		f:      f,
 		fd:     fd,
 		buflen: buflen,
+		dgram:  cfg.LinuxSockDGRAM,
 	}, nil
 }
 
@@ -156,6 +168,13 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	mac := make(net.HardwareAddr, 6)
 	copy(mac, buf[bpfl+6:bpfl+12])
 
+	if p.dgram {
+		// Skip the Ethernet frame
+		l := ipLen(b)
+		bpfl += l
+		n -= l
+	}
+
 	// Skip past BPF header to retrieve ethernet frame
 	out := copy(b, buf[bpfl:bpfl+n])
 
@@ -165,7 +184,27 @@ func (p *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 }
 
 // WriteTo implements the net.PacketConn.WriteTo method.
-func (p *packetConn) WriteTo(b []byte, _ net.Addr) (int, error) {
+func (p *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	if p.dgram {
+
+		// Insert the ethernet frame header.
+
+		// Ensure correct Addr type.
+		dstMac, ok := addr.(*Addr)
+		if !ok || dstMac.HardwareAddr == nil || len(dstMac.HardwareAddr) < 6 {
+			return 0, unix.EINVAL
+		}
+		srcMac := p.ifi
+
+		b = append(make([]byte, 14), b...)
+		copy(b, dstMac.HardwareAddr)
+		copy(b[6:], srcMac.HardwareAddr)
+		// Assume there is no VLAN ID
+		b[12] = 0x8
+		b[13] = 0x00
+
+	}
+
 	return syscall.Write(p.fd, b)
 }
 
