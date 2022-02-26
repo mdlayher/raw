@@ -223,6 +223,11 @@ func (p *packetConn) SetPromiscuous(b bool) error {
 	return syscall.SetBpfPromisc(p.fd, m)
 }
 
+// SetMulticast is not currently implemented on this platform.
+func (p *packetConn) SetMulticast(addr net.Addr) error {
+	return ErrNotImplemented
+}
+
 // Stats retrieves statistics from the Conn.
 func (p *packetConn) Stats() (*Stats, error) {
 	return nil, ErrNotImplemented

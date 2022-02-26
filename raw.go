@@ -107,6 +107,11 @@ func (c *Conn) SetPromiscuous(b bool) error {
 	return c.p.SetPromiscuous(b)
 }
 
+// SetMulticast will attach a link-layer multicast address to listen on the interface
+func (c *Conn) SetMulticast(addr net.Addr) error {
+	return c.p.SetMulticast(addr)
+}
+
 // Stats contains statistics about a Conn.
 type Stats struct {
 	// The total number of packets received.
